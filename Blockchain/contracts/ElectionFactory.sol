@@ -1,75 +1,83 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
-import './ElectionManager.sol';
 
-contract ElectionFactory {
+import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
+
+contract ElectionFactory is AccessControl {
+    //  ROLES
+    bytes32 public constant SUPER_ADMIN = keccak256("SUPER_ADMIN");
+    bytes32 public constant ELECTION_AUTHORITY = keccak256("ELECTION_AUTHORITY");
+
     // STATE VARIABLES
-    address public superAdmin;
-    mapping(uint256 => address) public elections;
-    uint256 public electionCounter;
+    uint256 public electionCount;
+    mapping(uint265 => Election) public elections;
 
-    // EVENTS
-    event ElectionCreated(uint256 indexed electionId, address electionAddress);
-
-    // CONSTRUCTOR
-    constructor() {
-        superAdmin = msg.sender;
-        electionCounter = 0;
+    
+    // STRUCTURE OF ELECTION
+    struct Election {
+        uint256 id;
+        string title;
+        ElectionType electionType;
+        string description;
+        address electionAuhority;
     }
 
     // MODIFIERS
-    modifier onlySuperAdmin() {
-        require(msg.sender == superAdmin, "Not authorized");
+    modifier onlyAdmin() {
+        require(hasRole(SUPER_ADMIN, msg.sender), "Not authorized");
         _;
     }
 
+    // EVENTS
+    event ElectionCreated(uint256 id, string title, string description, ElectionType electionType, address electionManager);
+
+    //  CONSTRUCTOR 
+    constructor () {
+        grantRole(SUPER_ADMIN, msg.sender);
+        electionCount = 0;
+    }
+
     // FUNCTIONS
-    // CREATE AN ELECTION
+    function addSuperAdmin(address newAdmin) public onlyAdmin returns(bool) {
+        grantRole(SUPER_ADMIN, newAdmin);
+        return true;
+    }
+
+    function removeSuperAdmin(address admin) public onlyAdmin returns(bool) {
+        revokeRole(SUPER_ADMIN, admin);
+        return true;
+    }
+
+    function addElectionAuthority(address authority) public onlyAdmin returns(bool) {
+        grantRole(ELECTION_AUTHORITY, authority);
+        return true;
+    }
+
+    function removeElectionAuthority(address authority) public onlyAdmin returns(bool) {
+        revokeRole(ELECTION_AUTHORITY, authority);
+        return true;
+    }
+
     function createElection(
-        string memory title,
-        string memory description,
-        ElectionType electionType,
-        address electionAuthority
-    ) external onlySuperAdmin returns (uint256) {
+        string memory _title,
+        string memory _description,
+        ElectionType _electionType,
+        address _electionAuthority
+    ) public onlyAdmin returns(uint256) {
+        
+        //! DEPLOY ELECTIONMANAGER CONTRACT
 
-        require(electionAuthority != address(0), "Invalid election authority");
 
-        // DEPLOY THE ELECTIONMANAGER CONTRACT
-        ElectionManager newElection = new ElectionManager(
-            electionCounter,
-            title,
-            description,
-            electionType,
-            electionAuthority,
-            address(this)
-        );
+        // STORE THE ELECTION REFERENCE
+        elections[electionCount] = Election(electionCount, _title, _electionType, _description, _electionAuthority);
+        emit ElectionCreated(electionCount, _title, _description, _electionType, _electionAuthority);
+        grantRole(role, _electionAuthority);
 
-        // STORE THE ELECTION REFERENCE 
-        elections[electionCounter] = address(newElection);
-
-        // EMIT ELECTION CREATED EVENT
-        emit ElectionCreated(electionCounter, address(newElection));
-
-        return electionCounter++;
+        return electionCount++;
     }
 
-    // GET ALL DEPLOYED ELECTION
-    function getAllElections() external view returns (address[] memory) {
-        address[] memory allElections = new address[](electionCounter);
-        for (uint256 i = 0; i < electionCounter; i++) {
-            allElections[i] = elections[i];
-        }
-        return allElections;
-    }
-
-    // GET ELECTION BY AUTHORITY ADDRESS (SCAN ALL ELECTIONS) 
-    function getElectionByAuthority(address authority) external view returns (address) {
-        for(uint i = 0; i < electionCounter; i++) {
-            address electionAddress = elections[i];
-            if (ElectionManager(electionAddress).electionAuthority() == authority) {
-                return electionAddress;
-            }
-        }
-        return address(0);
+    function getElection(uint256 _id) public view onlyAdmin returns (Election memory) {
+        require(_id < electionCount, "Election does not exist");
+        return elections[_id];
     }
 }
