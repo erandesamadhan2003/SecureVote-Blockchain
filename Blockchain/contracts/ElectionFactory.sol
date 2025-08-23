@@ -2,24 +2,27 @@
 pragma solidity ^0.8.0;
 
 import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
+import "./ElectionManager.sol";
 
 contract ElectionFactory is AccessControl {
-    //  ROLES
+    // ROLES
     bytes32 public constant SUPER_ADMIN = keccak256("SUPER_ADMIN");
-    bytes32 public constant ELECTION_AUTHORITY = keccak256("ELECTION_AUTHORITY");
 
     // STATE VARIABLES
     uint256 public electionCount;
-    mapping(uint265 => Election) public elections;
-
+    mapping(uint256 => Election) public elections;
+    mapping(uint256 => address) public electionManagers;
     
+    enum ElectionType { Presidential, Parliamentary, Local, Corporate, Referendum }
+          
     // STRUCTURE OF ELECTION
     struct Election {
         uint256 id;
         string title;
         ElectionType electionType;
         string description;
-        address electionA;
+        address electionAuthority;
+        address managerContract;
     }
 
     // MODIFIERS
@@ -29,10 +32,10 @@ contract ElectionFactory is AccessControl {
     }
 
     // EVENTS
-    event ElectionCreated(uint256 id, string title, string description, ElectionType electionType, address electionManager);
+    event ElectionCreated(uint256 id, string title, ElectionType electionType, address electionAuthority, address managerContract);
 
-    //  CONSTRUCTOR 
-    constructor () {
+    // CONSTRUCTOR
+    constructor() {
         grantRole(SUPER_ADMIN, msg.sender);
         electionCount = 0;
     }
@@ -48,16 +51,6 @@ contract ElectionFactory is AccessControl {
         return true;
     }
 
-    function addElectionAuthority(address authority) public onlyAdmin returns(bool) {
-        grantRole(ELECTION_AUTHORITY, authority);
-        return true;
-    }
-
-    function removeElectionAuthority(address authority) public onlyAdmin returns(bool) {
-        revokeRole(ELECTION_AUTHORITY, authority);
-        return true;
-    }
-
     function createElection(
         string memory _title,
         string memory _description,
@@ -65,19 +58,44 @@ contract ElectionFactory is AccessControl {
         address _electionAuthority
     ) public onlyAdmin returns(uint256) {
         
-        //! DEPLOY ELECTIONMANAGER CONTRACT
-
-
-        // STORE THE ELECTION REFERENCE
-        elections[electionCount] = Election(electionCount, _title, _electionType, _description, _electionAuthority);
-        emit ElectionCreated(electionCount, _title, _description, _electionType, _electionAuthority);
-        grantRole(role, _electionAuthority);
-
-        return electionCount++;
+        // Deploy ElectionManager contract
+        ElectionManager newManager = new ElectionManager(
+            address(this),
+            electionCount,
+            _title,
+            _electionType,
+            _description,
+            _electionAuthority
+        );
+        
+        address managerAddress = address(newManager);
+        
+        // Store election data
+        elections[electionCount] = Election({
+            id: electionCount,
+            title: _title,
+            electionType: _electionType,
+            description: _description,
+            electionAuthority: _electionAuthority,
+            managerContract: managerAddress
+        });
+        
+        electionManagers[electionCount] = managerAddress;
+        
+        emit ElectionCreated(electionCount, _title, _electionType, _electionAuthority, managerAddress);
+        
+        uint256 currentId = electionCount;
+        electionCount++;
+        return currentId;
     }
 
-    function getElection(uint256 _id) public view onlyAdmin returns (Election memory) {
+    function getElection(uint256 _id) public view returns (Election memory) {
         require(_id < electionCount, "Election does not exist");
         return elections[_id];
+    }
+
+    function getElectionManager(uint256 _id) public view returns (address) {
+        require(_id < electionCount, "Election does not exist");
+        return electionManagers[_id];
     }
 }
