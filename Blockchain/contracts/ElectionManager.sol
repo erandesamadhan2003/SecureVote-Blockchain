@@ -1,82 +1,135 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-contract ElectionManager{
+import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
 
+
+contract ElectionManager is AccessControl{
+
+    //ROLES
+    bytes32 public constant Election_Manager = keccak256("Election_Manager");
+    bytes32 public constant ELECTION_AUTHORITY=keccak256("ELECTION_AUTHORITY");
+
+    
     // enums
     enum ElectionPhase{Created,Registration,Voting,Ended,ResultDeclared}
     enum ElectionType{Presidential,Parliamentary,Local, Corporate,Referendum}
 
-    // struct   
-    struct Electioninfo{
-        uint256 id;
-        string  title;
-        string description;
-        ElectionType electionType;
-        address authority;
-        ElectionPhase electionPhase;
-        uint256 registrationStartTime;
-        uint256 registrationEndTime;
-        uint256 votingStartTime;
-        uint256 votingEndTime;
-    }
-
     //state variables
-    Electioninfo public electionInfo;
+    mapping(uint256=>Electioninfo) public electioninfo;
 
-
-    // constructors
-    constructor(uint256 _id,string memory _title,string memory _description,ElectionType _electionType,address _authority) {
-
-    // initialize the election info
-       electionInfo= Electioninfo({
-            id: _id,
-            title: _title,
-            description: _description,
-            electionType: _electionType,
-            authority: _authority,
-            electionPhase: ElectionPhase.Created,
-            registrationStartTime: 0,
-            registrationEndTime: 0,
-            votingStartTime: 0,
-            votingEndTime: 0
-       });
+     // struct   
+    struct Electioninfo{
+         uint256 id;
+         string title;
+         string description;
+         ElectionType electionType;
+         ElectionPhase currentPhase;
+         uint256 registrationStart;
+         uint256 registrationEnd;
+         uint256 votingStart;
+         uint256 votingEnd;
     }
 
 
-    // function to start registration phase
-    function startRegistration(uint256 _startTime, uint256 _endTime) public {
-        require(electionInfo.electionPhase == ElectionPhase.Created, "Election is not in Created phase");
-        require(_startTime < _endTime, "Start time must be before end time");
-        require(_startTime > block.timestamp, "Start time must be in the future");
-        electionInfo.registrationStartTime = _startTime;
-        electionInfo.registrationEndTime = _endTime;
-        electionInfo.electionPhase = ElectionPhase.Registration;
+    // MODIFIERS
+    modifier onlyAdmin(){
+        require(hasRole(ElectionManager,msg.sender),"Not authorized");
+        _;
+    }
+
+    modifier onlyAuthority(){
+        require(hasRole(ELECTION_AUTHORITY,msg.sender),"Not authorized");
+        _;
+    }
+
+    
+    //EVENTS
+    event PhaseChanged(uint256 electionid ,ElectionPhase newPhase);
+    event AuthorityAdded(address account);
+    event AuthorityRemoved(address account);
+
+
+    // constructor
+    constructor(
+         uint256 _id,
+         string memory _title,
+         ElectionType _electionType,  
+         string memory _description,
+         address _ElectionManager
+) {
+    grantRole(ELECTION_MANAGER, _ElectionManager);
+    electioninfo[_id] = Electioninfo({
+        id: _id,
+        title: _title,
+        description: _description,
+        electionType: _electionType,
+        currentPhase: ElectionPhase.Created,
+        registrationStart: 0,
+        registrationEnd: 0,
+        votingStart: 0,
+        votingEnd: 0
+    });
+}
+
+    //functions
+    function addElectionAuthority(address newAuthority) public onlyAdmin returns(bool){
+        grantRole(ELECTION_AUTHORITY,newAuthority);
+        emit AuthorityAdded(newAuthority);
+        return true;
+    }
+
+    function removeElectionAuthority(address admin) public onlyAdmin returns(bool){
+        revokeRole(ELECTION_AUTHORITY,admin);
+        emit AuthorityRemoved(admin);
+        return true;
+    }
+
+    function startRegistration(uint _id,uint256 start, uint256 end) public onlyAuthority {
+        require(electionInfo[_id].id==_id,"election not found);
+        require(start<end,"invalid time range");
+        require(electioninfo[_id].currentPhase==ElectionPhase.Created,"Wrong phase");
+
+        electionInfo[_id].registrationStart=start;
+        electionInfo[_id].registrationEnd=end;
+        electionInfo[_id].currentPhase=ElectionPhase.Registration;
+        emit PhaseChanged(_id,ElectionPhase.Registration);
+    }
+   
+    function startVoting(uint256 _id,uint256 start,uint256 end) public onlyAuthority {
+        require(electionInfo[_id]==_id,"election not found");
+        require(start<=end,"invalid time range");
+        require(electionInfo[_id].currentPhase==ElectionPhase.registration,"Wrong phase");
+
+        electionInfo[_id].votingStartTime=start;
+        electionInfo[_id].votingEnd=end;
+        electionInfo[_id].currentPhase=ElectionPhase.Voting;
+        emit PhaseChanged(_id,ElectionPhase.Voting);
+    }
+
+    function endElection(uint256 _id) public onlyAuthority {
+        require(electionInfo[_id]==_id,"election not found");
+        require(electionInfo[_id].currentPhase==ElectionPhase.Voting,"Wrong phase");
+        electionInfo[_id].currentPhase=ElectionPhase.Ended;
+        emit PhaseChanged(_id,ElectionPhase.Ended);
+
+    }
+
+    function declareResults(uint256 _id) public onlyAuthority{
+        require(electionInfo[_id]==_id,"election not found");
+        require(electionInfo[_id].currentPhase==ElectionPhase.Ended,"Wrong phase");
+        electionInfo[_id].currentPhase=ElectionPhase.ResultDeclared;
+        emit PhaseChanged(_id,ElectionPhase.ResultDeclared);
     } 
 
-    // function to start voting phase
-    function startVoting(uint256 _startTime , uint256 _endTime) public {
-        require(electionInfo.electionPhase==ElectionPhase.Registration, "Election is not in Registration phase");
-        require(_startTime < _endTime, "Start time must be before end time");
-        require(_startTime > block.timestamp, "Start time must be in the future");
-        electionInfo.votingStartTime = _startTime;
-        electionInfo.votingEndTime = _endTime;
-        electionInfo.electionPhase = ElectionPhase.Voting;
-         
+    function emergencyStop(uint256 _id) public onlyAdmin{
+        require(electionInfo[_id]==_id,"election not found");
+        require(electionInfo[_id].currentPhase!=ElectionPhase.Ended,"already ended");
+        electionInfo[_id].currentPhase=ElectionPhase.Ended;
+        emit PhaseChanged(_id,ElectionPhase.Ended);
+
     }
 
-    // function to end election
-    function endVoting() public {
-        require(electionInfo.electionPhase == ElectionPhase.Voting, "Election is not in Voting phase");
-        require(block.timestamp>electionInfo.votingEndTime,"Voting period not ended");
-        electionInfo.electionPhase = ElectionPhase.Ended;
-        
-    }
 
-    // function to declare results
-    function declareResults() public {
-        require(electionInfo.electionPhase == ElectionPhase.Ended, "Election is not in Ended phase");
-        electionInfo.electionPhase = ElectionPhase.ResultDeclared;
-    }
 
 }

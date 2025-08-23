@@ -19,7 +19,7 @@ contract ElectionFactory is AccessControl {
         string title;
         ElectionType electionType;
         string description;
-        address electionAuhority;
+        address electionA;
     }
 
     // MODIFIERS
