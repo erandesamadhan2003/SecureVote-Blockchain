@@ -2,17 +2,13 @@
 pragma solidity ^0.8.0;
 
 import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
-  
+import "./ElectionManager.sol";
+
 contract VoterRegistry {
-   
-    //manager contract reference
-    address public immutable manager;
+    ElectionManager public immutable electionManager;
     
-  
-    // state variables
     mapping(address => Voter) public voters;
     
-    // structs
     struct Voter {
         address walletAddress;
         string name;
@@ -21,80 +17,148 @@ contract VoterRegistry {
         bool hasVoted;
     }
 
-    //MODIFIERS
-    modifier onlyManager(){
-        require(isManagerElectionManager(msg.sender),"Not election manager");
+    modifier onlyElectionManager() {
+        require(electionManager.hasRole(electionManager.ELECTION_MANAGER(), msg.sender), "Not election manager");
         _;
     }
     
-
-    // Events
-    event VoterRegistered(address  voter, string name,string aadharHash);
-    event VoterVerified(address  voter);
-    event VoterVoted(address voter);
+    modifier onlyElectionAuthority() {
+        require(electionManager.hasRole(electionManager.ELECTION_AUTHORITY(), msg.sender), "Not election authority");
+        _;
+    }
     
-
-    //constructor
-    constructor(address _manager) {
-          manager = _manager;
-        }
-
-
-    //check manager electionManager role
-    function isManagerElectionManager(address account) public view returns(bool){
-        (bool success, bytes memory result)=manager.staticcall(
-           abi.encodeWithSignature(
-            "hasRole(bytes32,address)",
-             keccak256("ELECTION_MANAGER"),
-             account
-           )
+    modifier onlyManagerOrAuthority() {
+        require(
+            electionManager.hasRole(electionManager.ELECTION_MANAGER(), msg.sender) || 
+            electionManager.hasRole(electionManager.ELECTION_AUTHORITY(), msg.sender), 
+            "Not authorized"
         );
-        return success && abi.decode(result,(bool));
-
+        _;
     }
 
+    event VoterRegistered(address voter, string name, string aadharHash);
+    event VoterVerified(address voter);
+    event VoterVoted(address voter);
 
-    //function for  voter Registration
-    function registerVoter(string memory _name,string memory _aadharHash) public {
-        require(voters[msg.sender].walletAddress==address(0),"voter already registered");
-        voters[msg.sender]=Voter({
-            walletAddress:msg.sender,
-            name:_name,
-            aadharHash:_aadharHash,
-            isVerified:false,
-            hasVoted:false
+    constructor(address _electionManager) {
+        require(_electionManager != address(0), "Invalid election manager address");
+        electionManager = ElectionManager(_electionManager);
+    }
+
+    function isElectionManager(address account) public view returns(bool) {
+        return electionManager.hasRole(electionManager.ELECTION_MANAGER(), account);
+    }
+    
+    function isElectionAuthority(address account) public view returns(bool) {
+        return electionManager.hasRole(electionManager.ELECTION_AUTHORITY(), account);
+    }
+
+    function registerVoter(string memory _name, string memory _aadharHash) public {
+        require(bytes(_name).length > 0, "Name cannot be empty");
+        require(bytes(_aadharHash).length > 0, "Aadhar hash cannot be empty");
+        require(voters[msg.sender].walletAddress == address(0), "Voter already registered");
+        
+        voters[msg.sender] = Voter({
+            walletAddress: msg.sender,
+            name: _name,
+            aadharHash: _aadharHash,
+            isVerified: false,
+            hasVoted: false
         });
 
-        emit VoterRegistered(msg.sender,_name,_aadharHash);
-
+        emit VoterRegistered(msg.sender, _name, _aadharHash);
     }
     
-    // function for verifyvoter
-    function verifyVoter(address _voter) public onlyManager{
-        require(voters[_voter].walletAddress!=address(0),"voter is not registered yet");
-        voters[_voter].isVerified=true;
+    function verifyVoter(address _voter) public onlyElectionAuthority {
+        require(_voter != address(0), "Invalid voter address");
+        require(voters[_voter].walletAddress != address(0), "Voter is not registered yet");
+        require(!voters[_voter].isVerified, "Voter already verified");
+        
+        voters[_voter].isVerified = true;
         emit VoterVerified(_voter);
     }
 
-
-    // check if voter is eligible
     function isEligible(address _voter) public view returns (bool) {
-        require(voters[_voter].isVerified==true,"voter is not verified");
-        require(voters[_voter].hasVoted==false,"voter already give thier vote");
+        require(_voter != address(0), "Invalid voter address");
+        require(voters[_voter].walletAddress != address(0), "Voter is not registered");
+        require(voters[_voter].isVerified, "Voter is not verified");
+        require(!voters[_voter].hasVoted, "Voter already voted");
         return true;
     }
 
-
-    // function for mark vote
-    function markVoted(address _voter)  public onlyManager{
-        require(voters[_voter].isVerified==true,"voter is not verified");
-        require(voters[_voter].hasVoted==false,"voter alredy give thier vote");
-        voters[_voter].hasVoted=true;
+    function markVoted(address _voter) public onlyElectionAuthority {
+        require(_voter != address(0), "Invalid voter address");
+        require(voters[_voter].walletAddress != address(0), "Voter is not registered");
+        require(voters[_voter].isVerified, "Voter is not verified");
+        require(!voters[_voter].hasVoted, "Voter already voted");
+        
+        voters[_voter].hasVoted = true;
         emit VoterVoted(_voter);
-    } 
+    }
 
+    function batchVerifyVoters(address[] calldata _voters) public onlyElectionManager {
+        for (uint256 i = 0; i < _voters.length; i++) {
+            address voter = _voters[i];
+            if (voters[voter].walletAddress != address(0) && !voters[voter].isVerified) {
+                voters[voter].isVerified = true;
+                emit VoterVerified(voter);
+            }
+        }
+    }
 
+    function getVoterDetails(address _voter) public view returns (
+        string memory name,
+        string memory aadharHash,
+        bool isVerified,
+        bool hasVoted
+    ) {
+        require(_voter != address(0), "Invalid voter address");
+        Voter memory voter = voters[_voter];
+        require(voter.walletAddress != address(0), "Voter not registered");
+        
+        return (voter.name, voter.aadharHash, voter.isVerified, voter.hasVoted);
+    }
 
-    
+    function isRegistered(address _voter) public view returns (bool) {
+        return voters[_voter].walletAddress != address(0);
+    }
 
+    function getElectionManager() public view returns (address) {
+        return address(electionManager);
+    }
+
+    function getVoterStatus(address _voter) public view returns (
+        bool isRegistered_,
+        bool isVerified_,
+        bool hasVoted_
+    ) {
+        if (voters[_voter].walletAddress == address(0)) {
+            return (false, false, false);
+        }
+        
+        return (
+            true,
+            voters[_voter].isVerified,
+            voters[_voter].hasVoted
+        );
+    }
+
+    function canVote(address _voter) public view returns (bool) {
+        if (voters[_voter].walletAddress == address(0)) return false;
+        if (!voters[_voter].isVerified) return false;
+        if (voters[_voter].hasVoted) return false;
+        return true;
+    }
+
+    function resetVoterVoteStatus(address _voter) public onlyElectionManager {
+        require(voters[_voter].walletAddress != address(0), "Voter not registered");
+        voters[_voter].hasVoted = false;
+    }
+
+    function revokeVoterVerification(address _voter) public onlyElectionManager {
+        require(voters[_voter].walletAddress != address(0), "Voter not registered");
+        require(voters[_voter].isVerified, "Voter not verified");
+        voters[_voter].isVerified = false;
+        voters[_voter].hasVoted = false;
+    }
 }
