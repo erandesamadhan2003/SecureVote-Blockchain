@@ -7,7 +7,7 @@ import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
 contract ElectionManager is AccessControl{
 
     //ROLES
-    bytes32 public constant Election_Manager = keccak256("Election_Manager");
+    bytes32 public constant ELECTION_MANAGER = keccak256("ELECTION_MANAGER");
     bytes32 public constant ELECTION_AUTHORITY=keccak256("ELECTION_AUTHORITY");
 
     
@@ -34,7 +34,7 @@ contract ElectionManager is AccessControl{
 
     // MODIFIERS
     modifier onlyAdmin(){
-        require(hasRole(ElectionManager,msg.sender),"Not authorized");
+        require(hasRole(ELECTION_MANAGER,msg.sender),"Not authorized");
         _;
     }
 
@@ -86,46 +86,46 @@ contract ElectionManager is AccessControl{
     }
 
     function startRegistration(uint _id,uint256 start, uint256 end) public onlyAuthority {
-        require(electionInfo[_id].id==_id,"election not found);
+        require(electioninfo[_id].id==_id,"election not found");
         require(start<end,"invalid time range");
         require(electioninfo[_id].currentPhase==ElectionPhase.Created,"Wrong phase");
 
-        electionInfo[_id].registrationStart=start;
-        electionInfo[_id].registrationEnd=end;
-        electionInfo[_id].currentPhase=ElectionPhase.Registration;
+        electioninfo[_id].registrationStart=start;
+        electioninfo[_id].registrationEnd=end;
+        electioninfo[_id].currentPhase=ElectionPhase.Registration;
         emit PhaseChanged(_id,ElectionPhase.Registration);
     }
    
     function startVoting(uint256 _id,uint256 start,uint256 end) public onlyAuthority {
-        require(electionInfo[_id]==_id,"election not found");
-        require(start<=end,"invalid time range");
-        require(electionInfo[_id].currentPhase==ElectionPhase.registration,"Wrong phase");
+        require(electioninfo[_id].id==_id,"election not found");
+        require(start<end,"invalid time range");
+        require(electioninfo[_id].currentPhase==ElectionPhase.Registration,"Wrong phase");
 
-        electionInfo[_id].votingStartTime=start;
-        electionInfo[_id].votingEnd=end;
-        electionInfo[_id].currentPhase=ElectionPhase.Voting;
+        electioninfo[_id].votingStart=start;
+        electioninfo[_id].votingEnd=end;
+        electioninfo[_id].currentPhase=ElectionPhase.Voting;
         emit PhaseChanged(_id,ElectionPhase.Voting);
     }
 
     function endElection(uint256 _id) public onlyAuthority {
-        require(electionInfo[_id]==_id,"election not found");
-        require(electionInfo[_id].currentPhase==ElectionPhase.Voting,"Wrong phase");
-        electionInfo[_id].currentPhase=ElectionPhase.Ended;
+        require(electioninfo[_id].id==_id,"election not found");
+        require(electioninfo[_id].currentPhase==ElectionPhase.Voting,"Wrong phase");
+        electioninfo[_id].currentPhase=ElectionPhase.Ended;
         emit PhaseChanged(_id,ElectionPhase.Ended);
 
     }
 
     function declareResults(uint256 _id) public onlyAuthority{
-        require(electionInfo[_id]==_id,"election not found");
-        require(electionInfo[_id].currentPhase==ElectionPhase.Ended,"Wrong phase");
-        electionInfo[_id].currentPhase=ElectionPhase.ResultDeclared;
+        require(electioninfo[_id].id==_id,"election not found");
+        require(electioninfo[_id].currentPhase==ElectionPhase.Ended,"Wrong phase");
+        electioninfo[_id].currentPhase=ElectionPhase.ResultDeclared;
         emit PhaseChanged(_id,ElectionPhase.ResultDeclared);
     } 
 
     function emergencyStop(uint256 _id) public onlyAdmin{
-        require(electionInfo[_id]==_id,"election not found");
-        require(electionInfo[_id].currentPhase!=ElectionPhase.Ended,"already ended");
-        electionInfo[_id].currentPhase=ElectionPhase.Ended;
+        require(electioninfo[_id].id==_id,"election not found");
+        require(electioninfo[_id].currentPhase!=ElectionPhase.Ended,"already ended");
+        electioninfo[_id].currentPhase=ElectionPhase.Ended;
         emit PhaseChanged(_id,ElectionPhase.Ended);
 
     }
