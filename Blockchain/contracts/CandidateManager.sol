@@ -1,7 +1,12 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
+import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
+import "./ElectionManager.sol";
+
 contract CandidateManager {
+    ElectionManager public immutable electionManager;
+
     // ENUM 
     enum CandidateStatus { Applied, UnderReview, Approved, Rejected }
 
@@ -21,31 +26,52 @@ contract CandidateManager {
     }
 
     // STATE VARIABLES  
-    mapping(uint256 => Candidate) public candidates;                // CANDIDATES INFORMATION
-    mapping(address => uint256) public addressToCandidateIds;       // MAPPING CANDIDATE BY ADDRESS
-    uint256 public candidateCounter;                                // TOTAL CANDIDATES CREATED
+    uint256 public candidateCounter; // TOTAL CANDIDATES CREATED
+    mapping(uint256 => Candidate) public candidates;// CANDIDATES INFORMATION
+    mapping(address=>bool) public hasRegistered;
+    // mapping(address => uint256) public addressToCandidateIds;       // MAPPING CANDIDATE BY ADDRESS
+  
     uint256 public totalApproved;                                   // TOTAL APPROVED CANDIDATES
 
-    // CONSTRUCTOR
-    constructor() {
-        owner = msg.sender;
-    }
-
     // EVENTS
-    event CandidateApplied(uint256 indexed candidateId, address indexed candidateAddress); // CANDIDATE APPLIED
-    event CandidateApproved(uint256 indexed candidateId, address indexed approver);        // CANDIDATE APPROVED
+    event CandidateRegistered(uint256 candidateId, address candidateAddress,string name,string party); // CANDIDATE APPLIED
+    event CandidateVerified(uint256  candidateId);        // CANDIDATE APPROVED
+    event CandidateRemoved(uint256 candidateId);       // candidate removed
+
 
     // MODIFIERS
-    modifier onlyAuthority() {
-        require(msg.sender == owner, "Not authorized");
+    modifier onlyElectionManager(){
+        require(electionManager.hasRole(electionManager.ELECTION_MANAGER(), msg.sender),"Not election manager");
         _;
     }
 
-    address public owner = msg.sender;
+    modifier onlyElectionAuthority() {
+        require(electionManager.hasRole(electionManager.ELECTION_AUTHORITY(), msg.sender), "Not election authority");
+        _;
+    }
+
+    modifier onlyManagerOrAuthority() {
+        require(
+            electionManager.hasRole(electionManager.ELECTION_MANAGER(), msg.sender) || 
+            electionManager.hasRole(electionManager.ELECTION_AUTHORITY(), msg.sender), 
+            "Not authorized"
+        );
+        _;
+    }
+
+    
+    // CONSTRUCTOR
+    constructor( address _electionManager) {
+        require(_electionManager!= address(0),"Invalid election manager address");
+        electionManager=ElectionManager(_electionManager);
+    }
+
+
+    // address public owner = msg.sender;
 
     // FUNCTIONS
     // REGISTRATION FUNCTIONS
-    function applyAsCandidate(
+    function registerCandidate(
         string memory _name,
         string memory _party,
         string memory _manifesto,
@@ -53,8 +79,7 @@ contract CandidateManager {
         bytes32 _documentHash
     ) external {
         require(bytes(_name).length > 0, "Name Required");
-        require(addressToCandidateIds[msg.sender] == 0, "Already Applied");
-
+        require(!hasRegistered[msg.sender], "Already Applied");
         candidateCounter++;
         candidates[candidateCounter] = Candidate({
             id: candidateCounter,
@@ -70,25 +95,27 @@ contract CandidateManager {
             voteCount: 0
         });
 
-        addressToCandidateIds[msg.sender] = candidateCounter;
-        emit CandidateApplied(candidateCounter, msg.sender);   
+        hasRegistered[msg.sender] = true;
+        emit CandidateRegistered(candidateCounter, msg.sender, _name, _party);   
     }
 
     // APPROVAL FUNCTIONS
-    function approveCandidate(uint256 _candidateId) external onlyAuthority {
+    function verifyCandidate(uint256 _candidateId) external onlyElectionAuthority {
         require(_candidateId > 0 && _candidateId <= candidateCounter, "Invalid Candidate ID");
         require(candidates[_candidateId].status == CandidateStatus.Applied, "Not Applicable");
 
         candidates[_candidateId].status = CandidateStatus.Approved;
         candidates[_candidateId].approvedBy = msg.sender;
         totalApproved++;
-        emit CandidateApproved(_candidateId, msg.sender);
+        emit CandidateVerified(_candidateId);
     }
 
     // REJECTION FUNCTIONS 
-    function rejectCandidate(uint256 _candidateId) external onlyAuthority {
+    function removeCandidate(uint256 _candidateId) external onlyElectionAuthority {
         require(_candidateId > 0 && _candidateId <= candidateCounter , "Invalid candidate");
+        require(hasRegistered[candidates[_candidateId].walletAddress], "Candidate is not registered");
         candidates[ _candidateId ].status = CandidateStatus.Rejected;
+        emit CandidateRemoved(_candidateId);
 
         //! LOG IN AUDIT TRAIL
     }
