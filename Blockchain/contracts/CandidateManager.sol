@@ -143,5 +143,11 @@ contract CandidateManager {
     function isCandidateApproved (uint256 _candidateId) public view returns (bool) {
         require(_candidateId > 0 && _candidateId <= candidateCounter, "Invalid candidate ID");
         return candidates[_candidateId].status == CandidateStatus.Approved;
-    }   
+    } 
+
+    //function to increment a vote of a candidate
+    function incrementVote(uint256 _candidateId) external {
+         require(isCandidateApproved(_candidateId), "Candidate not approved");
+         candidates[_candidateId].voteCount += 1;
+    }  
 }

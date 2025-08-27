@@ -63,7 +63,7 @@ contract ElectionFactory is AccessControl {
             address(this),
             electionCount,
             _title,
-            _electionType,
+            ElectionManager.ElectionType(uint8(_electionType)),
             _description,
             _electionAuthority
         );
