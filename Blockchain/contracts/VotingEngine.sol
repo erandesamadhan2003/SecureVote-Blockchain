@@ -99,19 +99,20 @@ contract VotingEngine {
         emit VoteCommitted(msg.sender, commitment);
     }
 
-    function revealVote(uint256 candidateId, bytes32 nounce) external whenNotPaused {
+    function revealVote(uint256 candidateId, bytes32 nonce) external whenNotPaused {
         require(voteCommit[msg.sender] != bytes32(0), "Vote is not committed yet");
         require(!revealed[msg.sender], "Vote already revealed");
 
-        bytes32 computedhash = keccak256(abi.encodePacked(candidateId, nounce));
-        require(computedhash == voteCommit[msg.sender], "Commitment mismatch");
+        bytes32 computedHash = keccak256(abi.encodePacked(candidateId, nonce));
+        require(computedHash == voteCommit[msg.sender], "Commitment mismatch");
         require(candidateManager.isCandidateApproved(candidateId), "Candidate not verified");
 
-        candidateManager.incrementVote(candidateId);
-        revealed[msg.sender] = true;
+        revealed[msg.sender] = true;              
+        voterRegistry.markVoted(msg.sender);       
+        candidateManager.incrementVote(candidateId); 
 
         emit VoteRevealed(msg.sender, candidateId);
-    }
+}
 
     function totalFor(uint256 candidateId) public view returns (uint256) {
         CandidateManager.Candidate memory candidate = candidateManager.getCandidateInfo(candidateId);

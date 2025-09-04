@@ -34,7 +34,7 @@ Iska kaam:
   * `SUPER_ADMIN`: Highest level control (multiple accounts allowed).
   * `ELECTION_AUTHORITY`: Elections manage karne wale log.
 
-* **State Variables:**
+* **State Variables:**<!--  -->
 
   * `electionCount`: Total elections created.
   * `mapping(uint256 => Election) elections`: Election details store karne ke liye.
