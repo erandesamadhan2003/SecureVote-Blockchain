@@ -8,6 +8,9 @@
     "esModuleInterop": true,
     "skipLibCheck": true,
     "moduleResolution": "node16",
-    "outDir": "dist"
+    "outDir": "dist",
+      "types": ["node", "mocha", "hardhat"]
+    },
+    "include": ["./scripts", "./test", "./typechain-types"],
+    "files": ["./hardhat.config.ts"]
   }
-}
