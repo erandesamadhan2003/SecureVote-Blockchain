@@ -8,12 +8,8 @@ contract Election is ReentrancyGuard {
     Roles public roles;
     address public electionManager;
     
-    // ! ==================== ENUMS ====================
-    
     enum ElectionStatus { Created, Registration, Voting, Ended, ResultDeclared }
     enum CandidateStatus { Pending, Approved, Rejected }
-    
-    // ! ==================== STRUCTS ====================
     
     struct Candidate {
         uint256 id;
@@ -21,7 +17,7 @@ contract Election is ReentrancyGuard {
         string name;
         string party;
         string manifesto;
-        string imageHash; // IPFS hash
+        string imageHash;
         CandidateStatus status;
         uint256 voteCount;
         bool exists;
@@ -45,8 +41,6 @@ contract Election is ReentrancyGuard {
         uint256 totalCandidates;
     }
 
-    // ! ==================== STATE VARIABLES ====================
-
     ElectionInfo public electionInfo;
     uint256 private candidateIdCounter;
     
@@ -57,8 +51,6 @@ contract Election is ReentrancyGuard {
     uint256[] public candidateIds;
     address[] public voterAddresses;
 
-    // ! ==================== EVENTS ====================
-
     event ElectionCreated(string name, uint256 startTime, uint256 endTime);
     event ElectionStatusChanged(ElectionStatus oldStatus, ElectionStatus newStatus);
     event CandidateRegistered(uint256 indexed candidateId, address indexed candidateAddress, string name);
@@ -66,8 +58,6 @@ contract Election is ReentrancyGuard {
     event VoterRegistered(address indexed voter);
     event VoteCasted(address indexed voter, uint256 indexed candidateId);
     event ResultDeclared(uint256 winnerCandidateId, uint256 totalVotes);
-
-    // ! ==================== MODIFIERS ====================
 
     modifier onlyElectionManager() {
         require(msg.sender == electionManager, "Only election manager");
@@ -91,8 +81,6 @@ contract Election is ReentrancyGuard {
         require(electionInfo.status == _status, "Invalid election status");
         _;
     }
-
-    // ! ==================== CONSTRUCTOR ====================
 
     constructor(
         address _rolesContract,
@@ -125,12 +113,9 @@ contract Election is ReentrancyGuard {
         });
 
         candidateIdCounter = 0;
-
         emit ElectionCreated(_name, _startTime, _endTime);
     }
 
-    // ! ==================== ELECTION MANAGEMENT ====================
-    
     function startCandidateRegistration() external onlyElectionManager inStatus(ElectionStatus.Created) {
         require(block.timestamp < electionInfo.registrationDeadline, "Registration deadline passed");
         _changeStatus(ElectionStatus.Registration);
@@ -159,8 +144,6 @@ contract Election is ReentrancyGuard {
         emit ElectionStatusChanged(oldStatus, newStatus);
     }
 
-    // ! ==================== CANDIDATE MANAGEMENT ====================
-
     function registerCandidate(
         string memory _name,
         string memory _party,
@@ -173,10 +156,8 @@ contract Election is ReentrancyGuard {
         require(bytes(_party).length > 0, "Party required");
 
         candidateIdCounter++;
-        uint256 newCandidateId = candidateIdCounter;
-
-        candidates[newCandidateId] = Candidate({
-            id: newCandidateId,
+        candidates[candidateIdCounter] = Candidate({
+            id: candidateIdCounter,
             candidateAddress: msg.sender,
             name: _name,
             party: _party,
@@ -187,10 +168,9 @@ contract Election is ReentrancyGuard {
             exists: true
         });
 
-        candidateAddressToId[msg.sender] = newCandidateId;
-        candidateIds.push(newCandidateId);
-
-        emit CandidateRegistered(newCandidateId, msg.sender, _name);
+        candidateAddressToId[msg.sender] = candidateIdCounter;
+        candidateIds.push(candidateIdCounter);
+        emit CandidateRegistered(candidateIdCounter, msg.sender, _name);
     }
 
     function validateCandidate(uint256 _candidateId, bool _approve) 
@@ -211,8 +191,6 @@ contract Election is ReentrancyGuard {
         emit CandidateValidated(_candidateId, candidates[_candidateId].status);
     }
 
-    // ! ==================== VOTER MANAGEMENT ====================
-
     function registerVoter(address _voter) external onlyElectionAuthorityOrManager {
         require(_voter != address(0), "Invalid voter address");
         require(!voters[_voter].isRegistered, "Already registered");
@@ -226,7 +204,6 @@ contract Election is ReentrancyGuard {
         });
         
         voterAddresses.push(_voter);
-
         emit VoterRegistered(_voter);
     }
 
@@ -237,11 +214,7 @@ contract Election is ReentrancyGuard {
         for (uint256 i = 0; i < _voters.length; i++) {
             address voter = _voters[i];
             
-            if (voter == address(0) || voters[voter].isRegistered) {
-                continue;
-            }
-            
-            if (!roles.hasRole(roles.VOTER(), voter)) {
+            if (voter == address(0) || voters[voter].isRegistered || !roles.hasRole(roles.VOTER(), voter)) {
                 continue;
             }
             
@@ -253,12 +226,9 @@ contract Election is ReentrancyGuard {
             });
             
             voterAddresses.push(voter);
-            
             emit VoterRegistered(voter);
         }
     }
-
-    // ! ==================== VOTING ====================
 
     function castVote(uint256 _candidateId) external onlyVoter inStatus(ElectionStatus.Voting) nonReentrant {
         require(voters[msg.sender].isRegistered, "Not registered voter");
@@ -270,14 +240,11 @@ contract Election is ReentrancyGuard {
 
         voters[msg.sender].hasVoted = true;
         voters[msg.sender].votedCandidateId = _candidateId;
-        
         candidates[_candidateId].voteCount++;
         electionInfo.totalVotes++;
 
         emit VoteCasted(msg.sender, _candidateId);
     }
-
-    // ! ==================== RESULT CALCULATION ====================
 
     function getWinner() public view returns (uint256) {
         require(
@@ -291,33 +258,21 @@ contract Election is ReentrancyGuard {
 
         for (uint256 i = 0; i < candidateIds.length; i++) {
             uint256 candidateId = candidateIds[i];
-            if (candidates[candidateId].status == CandidateStatus.Approved) {
-                if (candidates[candidateId].voteCount > maxVotes) {
-                    maxVotes = candidates[candidateId].voteCount;
-                    winnerId = candidateId;
-                }
+            if (candidates[candidateId].status == CandidateStatus.Approved && candidates[candidateId].voteCount > maxVotes) {
+                maxVotes = candidates[candidateId].voteCount;
+                winnerId = candidateId;
             }
         }
 
         return winnerId;
     }
 
-    function getResults() external view returns (
-        uint256[] memory ids,
-        string[] memory names,
-        uint256[] memory voteCounts
-    ) {
-        require(
-            electionInfo.status == ElectionStatus.Ended || 
-            electionInfo.status == ElectionStatus.ResultDeclared,
-            "Results not available yet"
-        );
+    function getResults() external view returns (uint256[] memory ids, string[] memory names, uint256[] memory voteCounts) {
+        require(electionInfo.status == ElectionStatus.Ended || electionInfo.status == ElectionStatus.ResultDeclared, "Results not available yet");
 
         uint256 approvedCount = 0;
         for (uint256 i = 0; i < candidateIds.length; i++) {
-            if (candidates[candidateIds[i]].status == CandidateStatus.Approved) {
-                approvedCount++;
-            }
+            if (candidates[candidateIds[i]].status == CandidateStatus.Approved) approvedCount++;
         }
 
         ids = new uint256[](approvedCount);
@@ -334,11 +289,7 @@ contract Election is ReentrancyGuard {
                 index++;
             }
         }
-
-        return (ids, names, voteCounts);
     }
-
-    // ! ==================== VIEW FUNCTIONS ====================
 
     function getCandidateDetails(uint256 _candidateId) external view returns (Candidate memory) {
         require(candidates[_candidateId].exists, "Candidate not found");
@@ -346,47 +297,35 @@ contract Election is ReentrancyGuard {
     }
 
     function getAllApprovedCandidates() external view returns (Candidate[] memory) {
-        uint256 approvedCount = 0;
+        uint256 count = 0;
+        for (uint256 i = 0; i < candidateIds.length; i++) {
+            if (candidates[candidateIds[i]].status == CandidateStatus.Approved) count++;
+        }
+
+        Candidate[] memory approved = new Candidate[](count);
+        uint256 index = 0;
         for (uint256 i = 0; i < candidateIds.length; i++) {
             if (candidates[candidateIds[i]].status == CandidateStatus.Approved) {
-                approvedCount++;
+                approved[index++] = candidates[candidateIds[i]];
             }
         }
-
-        Candidate[] memory approvedCandidates = new Candidate[](approvedCount);
-        uint256 index = 0;
-        
-        for (uint256 i = 0; i < candidateIds.length; i++) {
-            uint256 candidateId = candidateIds[i];
-            if (candidates[candidateId].status == CandidateStatus.Approved) {
-                approvedCandidates[index] = candidates[candidateId];
-                index++;
-            }
-        }
-
-        return approvedCandidates;
+        return approved;
     }
 
     function getPendingCandidates() external view returns (Candidate[] memory) {
-        uint256 pendingCount = 0;
+        uint256 count = 0;
+        for (uint256 i = 0; i < candidateIds.length; i++) {
+            if (candidates[candidateIds[i]].status == CandidateStatus.Pending) count++;
+        }
+
+        Candidate[] memory pending = new Candidate[](count);
+        uint256 index = 0;
         for (uint256 i = 0; i < candidateIds.length; i++) {
             if (candidates[candidateIds[i]].status == CandidateStatus.Pending) {
-                pendingCount++;
+                pending[index++] = candidates[candidateIds[i]];
             }
         }
-
-        Candidate[] memory pendingCandidates = new Candidate[](pendingCount);
-        uint256 index = 0;
-        
-        for (uint256 i = 0; i < candidateIds.length; i++) {
-            uint256 candidateId = candidateIds[i];
-            if (candidates[candidateId].status == CandidateStatus.Pending) {
-                pendingCandidates[index] = candidates[candidateId];
-                index++;
-            }
-        }
-
-        return pendingCandidates;
+        return pending;
     }
 
     function getVoterInfo(address _voter) external view returns (VoterInfo memory) {
