@@ -3,13 +3,16 @@ import { connectDB } from './config/db.js';
 import dotenv from 'dotenv';
 import cors from 'cors';
 import { listenToEvents } from './utils/contractService.js';
+import http from 'http';
 
 // Import routes
 import authRoutes from './routes/auth.routes.js';
 import electionRoutes from './routes/elections.routes.js';
 import candidateRoutes from './routes/candidates.routes.js';
 import voteRoutes from './routes/votes.routes.js';
+import adminRoutes from './routes/admin.routes.js'
 import { errorHandler } from './middlewares/errorHandler.js';
+
 
 dotenv.config();
 
@@ -28,6 +31,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/elections', electionRoutes);
 app.use('/api/candidates', candidateRoutes);
 app.use('/api/votes', voteRoutes);
+app.use('/api/admin', adminRoutes)
 
 // Basic routes
 app.get('/', (req, res) => {
@@ -59,7 +63,14 @@ setTimeout(() => {
 // Error handler middleware (should be last)
 app.use(errorHandler);
 
-app.listen(PORT, () => {
-    console.log(`Server is running on port ${PORT}`);
-    console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
+const server = http.createServer(app);
+
+// initialize websocket
+const { initWebsocket } = require('./utils/websocket');
+initWebsocket(server, { origin: process.env.FRONTEND_ORIGIN || 'http://localhost:3000' });
+
+// start server
+server.listen(PORT, () => {
+  console.log(`Server listening on ${PORT}`);
+  console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
 });
