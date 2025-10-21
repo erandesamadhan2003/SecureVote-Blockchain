@@ -1,32 +1,11 @@
 import React from 'react';
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
-import { useWallet } from './hooks';
-import { Home, Dashboard, ElectionDetail, VotingPage } from './pages';
-import EventListeners from './pages/admin/EventListeners';
+
 import './App.css';
 
 function App() {
-  const { isConnected } = useWallet();
 
   return (
-    <Router>
-      <div className="App">
-        <Routes>
-          <Route path="/" element={<Home />} />
-          
-          <Route path="/dashboard" element={isConnected ? <Dashboard /> : <Home />} />
-
-          <Route path="/election/:id" element={<ElectionDetail />} />
-
-          <Route path="/election/:id/vote" element={<VotingPage />} />
-
-          <Route path="/admin/event-listeners" element={<EventListeners />} />
-                    
-          {/* 404 Page */}
-          <Route path="*" element={<NotFound />} />
-        </Routes>
-      </div>
-    </Router>
+    <h1 className='text-3xl font-bold'>Hello</h1>
   );
 }
 
