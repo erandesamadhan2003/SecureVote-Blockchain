@@ -456,3 +456,158 @@ export const getPendingCandidatesOnChain = async (req, res) => {
 		return res.status(500).json({ message: err?.reason || err.message || "Server error" });
 	}
 };
+
+// new: GET /api/elections/my
+export const getMyElections = async (req, res) => {
+	try {
+		if (!req.user || !req.user.walletAddress) {
+			return res.status(401).json({ message: "Unauthorized" });
+		}
+		const managerAddr = req.user.walletAddress.toLowerCase();
+
+		// Try DB first
+		const dbElections = await Election.find({ creator: managerAddr }).sort({ createdAt: -1 }).lean();
+		if (dbElections && dbElections.length > 0) {
+			return res.json({ source: "db", count: dbElections.length, elections: dbElections });
+		}
+
+		// Fallback to on-chain manager list
+		const idsBN = await electionFactoryContract.getManagerElections(managerAddr);
+		const ids = idsBN.map((bn) => bn.toNumber());
+		if (!ids || ids.length === 0) {
+			return res.json({ source: "chain", count: 0, elections: [] });
+		}
+
+		const onChain = await electionFactoryContract.getElectionsByIds(ids);
+		const mapped = onChain.map((e) => ({
+			electionId: e.id.toString(),
+			contractAddress: e.electionAddress,
+			creator: e.creator,
+			name: e.name,
+			description: e.description,
+			startTime: new Date(e.startTime.toNumber() * 1000),
+			endTime: new Date(e.endTime.toNumber() * 1000),
+			createdAt: new Date(e.createdAt.toNumber() * 1000),
+			isActive: e.isActive
+		}));
+
+		return res.json({ source: "chain", count: mapped.length, elections: mapped });
+	} catch (err) {
+		console.error("getMyElections error:", err);
+		return res.status(500).json({ message: "Server error" });
+	}
+};
+
+// new: POST /api/elections/:id/deactivate
+export const deactivateElection = async (req, res) => {
+	try {
+		const { id } = req.params;
+		if (!id) return res.status(400).json({ message: "election id required" });
+
+		const numericId = parseInt(id, 10);
+		if (Number.isNaN(numericId)) return res.status(400).json({ message: "invalid election id" });
+
+		// send tx to factory to deactivate
+		const tx = await electionFactoryContract.deactivateElection(numericId);
+		const receipt = await tx.wait();
+
+		// update DB record if exists
+		const updated = await Election.findOneAndUpdate(
+			{ electionId: numericId },
+			{ isActive: false, status: "Cancelled" },
+			{ new: true }
+		).lean();
+
+		return res.json({
+			message: "Election deactivated",
+			transaction: { hash: tx.hash, blockNumber: receipt.blockNumber },
+			election: updated || null
+		});
+	} catch (err) {
+		console.error("deactivateElection error:", err);
+		return res.status(500).json({ message: err?.reason || err.message || "Server error" });
+	}
+};
+
+// helper to map chain election struct to plain object
+const mapChainElection = (e) => ({
+	electionId: e.id.toString(),
+	contractAddress: e.electionAddress,
+	creator: e.creator,
+	name: e.name,
+	description: e.description,
+	startTime: new Date(e.startTime.toNumber() * 1000),
+	endTime: new Date(e.endTime.toNumber() * 1000),
+	createdAt: new Date(e.createdAt.toNumber() * 1000),
+	isActive: e.isActive
+});
+
+// new: GET /api/elections/active
+export const getActiveElections = async (req, res) => {
+	try {
+		// DB fallback
+		const dbElections = await Election.find({ isActive: true }).sort({ createdAt: -1 }).lean();
+		if (dbElections && dbElections.length > 0) {
+			return res.json({ source: "db", count: dbElections.length, elections: dbElections });
+		}
+
+		const onChain = await electionFactoryContract.getActiveElections();
+		const mapped = onChain.map(mapChainElection);
+		return res.json({ source: "chain", count: mapped.length, elections: mapped });
+	} catch (err) {
+		console.error("getActiveElections error:", err);
+		return res.status(500).json({ message: "Server error" });
+	}
+};
+
+// new: GET /api/elections/upcoming
+export const getUpcomingElections = async (req, res) => {
+	try {
+		const dbElections = await Election.find({ startTime: { $gt: new Date() }, isActive: true }).sort({ startTime: 1 }).lean();
+		if (dbElections && dbElections.length > 0) {
+			return res.json({ source: "db", count: dbElections.length, elections: dbElections });
+		}
+
+		const onChain = await electionFactoryContract.getUpcomingElections();
+		const mapped = onChain.map(mapChainElection);
+		return res.json({ source: "chain", count: mapped.length, elections: mapped });
+	} catch (err) {
+		console.error("getUpcomingElections error:", err);
+		return res.status(500).json({ message: "Server error" });
+	}
+};
+
+// new: GET /api/elections/ongoing
+export const getOngoingElections = async (req, res) => {
+	try {
+		const now = new Date();
+		const dbElections = await Election.find({ startTime: { $lte: now }, endTime: { $gte: now }, isActive: true }).sort({ startTime: -1 }).lean();
+		if (dbElections && dbElections.length > 0) {
+			return res.json({ source: "db", count: dbElections.length, elections: dbElections });
+		}
+
+		const onChain = await electionFactoryContract.getOngoingElections();
+		const mapped = onChain.map(mapChainElection);
+		return res.json({ source: "chain", count: mapped.length, elections: mapped });
+	} catch (err) {
+		console.error("getOngoingElections error:", err);
+		return res.status(500).json({ message: "Server error" });
+	}
+};
+
+// new: GET /api/elections/completed
+export const getCompletedElections = async (req, res) => {
+	try {
+		const dbElections = await Election.find({ endTime: { $lt: new Date() } }).sort({ endTime: -1 }).lean();
+		if (dbElections && dbElections.length > 0) {
+			return res.json({ source: "db", count: dbElections.length, elections: dbElections });
+		}
+
+		const onChain = await electionFactoryContract.getCompletedElections();
+		const mapped = onChain.map(mapChainElection);
+		return res.json({ source: "chain", count: mapped.length, elections: mapped });
+	} catch (err) {
+		console.error("getCompletedElections error:", err);
+		return res.status(500).json({ message: "Server error" });
+	}
+};

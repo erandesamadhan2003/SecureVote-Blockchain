@@ -5,6 +5,8 @@ import connectDB from "./config/db.js";
 import authRoutes from "./routes/auth.routes.js";
 import electionRoutes from "./routes/election.routes.js";
 import roleRoutes from "./routes/roles.routes.js";
+// import resultRoutes from "./routes/result.routes.js";
+import candidateRoutes from "./routes/candidate.routes.js"; // added
 
 dotenv.config();
 
@@ -19,8 +21,14 @@ app.use("/api/auth", authRoutes);
 // mount election routes
 app.use("/api/elections", electionRoutes);
 
+// mount candidate routes
+app.use("/api/candidates", candidateRoutes); // added
+
 // mount role routes
 app.use("/api/roles", roleRoutes);
+
+// mount result routes
+// app.use("/api/results", resultRoutes);
 
 // Simple health route
 app.get("/", (req, res) => {

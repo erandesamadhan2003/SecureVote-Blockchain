@@ -82,3 +82,67 @@ export const login = async (req, res) => {
         return res.status(500).json({ message: "Server error" });
     }
 };
+
+// in-memory token blacklist (note: non-persistent; restart clears it)
+const tokenBlacklist = new Set();
+
+const isBlacklisted = (token) => tokenBlacklist.has(token);
+
+export const getProfile = async (req, res) => {
+    try {
+        const authHeader = req.headers.authorization || req.headers.Authorization;
+        if (!authHeader || !authHeader.startsWith("Bearer ")) {
+            return res.status(401).json({ message: "Authorization token missing" });
+        }
+
+        const token = authHeader.split(" ")[1];
+
+        if (isBlacklisted(token)) {
+            return res.status(401).json({ message: "Token revoked" });
+        }
+
+        let decoded;
+        try {
+            decoded = jwt.verify(token, process.env.JWT_SECRET);
+        } catch (err) {
+            return res.status(401).json({ message: "Invalid or expired token" });
+        }
+
+        const user = await User.findById(decoded.id).lean();
+        if (!user) {
+            return res.status(404).json({ message: "User not found" });
+        }
+
+        const userSafe = {
+            id: user._id,
+            walletAddress: user.walletAddress,
+            name: user.name,
+            aadharNumber: user.aadharNumber,
+            role: user.role,
+            isVerified: user.isVerified,
+            createdAt: user.createdAt
+        };
+
+        return res.json({ user: userSafe });
+    } catch (err) {
+        console.error("getProfile error:", err);
+        return res.status(500).json({ message: "Server error" });
+    }
+};
+
+// POST /api/auth/logout
+export const logout = async (req, res) => {
+    try {
+        const authHeader = req.headers.authorization || req.headers.Authorization;
+        if (!authHeader || !authHeader.startsWith("Bearer ")) {
+            return res.status(400).json({ message: "Authorization token missing" });
+        }
+        const token = authHeader.split(" ")[1];
+        // add token to blacklist
+        tokenBlacklist.add(token);
+        return res.json({ message: "Logged out" });
+    } catch (err) {
+        console.error("logout error:", err);
+        return res.status(500).json({ message: "Server error" });
+    }
+};

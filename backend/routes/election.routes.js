@@ -15,12 +15,28 @@ import {
   getResultsOnChain,
   getCandidateDetailsOnChain,
   getAllApprovedCandidatesOnChain,
-  getPendingCandidatesOnChain
+  getPendingCandidatesOnChain,
+  // new handlers
+  getMyElections,
+  deactivateElection,
+  getActiveElections,
+  getUpcomingElections,
+  getOngoingElections,
+  getCompletedElections
 } from "../controllers/election.controller.js";
 
 const router = express.Router();
 
 router.get("/", getAllElections);
+
+// new: collection-level static routes (must come before /:id to avoid param capture)
+router.get("/active", getActiveElections);
+router.get("/upcoming", getUpcomingElections);
+router.get("/ongoing", getOngoingElections);
+router.get("/completed", getCompletedElections);
+router.get("/my", getMyElections);
+
+// keep dynamic id route after static GETs
 router.get("/:id", getElectionById);
 
 // lifecycle actions
@@ -28,6 +44,9 @@ router.post("/:id/start-registration", startCandidateRegistration);
 router.post("/:id/start-voting", startVoting);
 router.post("/:id/end", endElection);
 router.post("/:id/declare-result", declareResult);
+
+// deactivate
+router.post("/:id/deactivate", deactivateElection);
 
 // candidate actions
 router.post("/:id/register-candidate", registerCandidate);
