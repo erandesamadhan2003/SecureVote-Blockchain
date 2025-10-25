@@ -79,7 +79,7 @@ export const parseError = (error) => {
     if (!error) return "Unknown error";
     // ethers revert reason
     if (error.error && error.error.message) return error.error.message;
-    if (error.data && error.data.message) return error.data.message;
+    if (error.data && error.data.message) return error.data.message;                
     if (error.reason) return error.reason;
     if (typeof error === "string") return error;
     if (error.message) {
