@@ -12,7 +12,7 @@ const setToken = (token) => {
         console.warn("Unable to set token:", e);
     }
 };
-
+        
 const getToken = () => {
     try {
         return localStorage.getItem(TOKEN_KEY);

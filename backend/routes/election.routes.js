@@ -5,7 +5,7 @@ import {
   createElection,
   startCandidateRegistration,
   startVoting,
-  endElection,
+  endElection,  
   declareResult,
   registerCandidate,
   validateCandidate,

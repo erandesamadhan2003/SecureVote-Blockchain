@@ -1,27 +1,27 @@
-// import express from "express";
-// import {
-// 	getResults,
-// 	getWinner,
-// 	declareResult,
-// 	getDetailedAnalytics,
-// 	exportResults
-// } from "../controllers/result.controller.js";
+    import express from "express";
+import {
+	getResults,
+	getWinner,
+	declareResult,
+	getDetailedAnalytics,
+	exportResults
+} from "../controllers/result.controller.js";
 
-// const router = express.Router();
+const router = express.Router();
 
-// // GET /api/results/:id
-// router.get("/:id", getResults);
+// GET /api/results/:electionId
+router.get("/:electionId", getResults);
 
-// // GET /api/results/:id/winner
-// router.get("/:id/winner", getWinner);
+// GET /api/results/:electionId/winner
+router.get("/:electionId/winner", getWinner);
 
-// // POST /api/results/:id/declare
-// router.post("/:id/declare", declareResult);
+// POST /api/results/:electionId/declare
+router.post("/:electionId/declare", declareResult);
 
-// // GET /api/results/:id/analytics
-// router.get("/:id/analytics", getDetailedAnalytics);
+// GET /api/results/:electionId/analytics
+router.get("/:electionId/analytics", getDetailedAnalytics);
 
-// // GET /api/results/:id/export
-// router.get("/:id/export", exportResults);
+// GET /api/results/:electionId/export
+router.get("/:electionId/export", exportResults);
 
-// export default router;
+export default router;
