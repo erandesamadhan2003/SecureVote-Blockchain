@@ -1,13 +1,9 @@
-import { readFileSync } from "fs";
-import { fileURLToPath } from "url";
-import { dirname, join } from "path";
-import dotenv from "dotenv";
+// Remove all Node.js imports and replace with:
+import { RolesABI } from '../contracts/abis/Roles.json';
+import { ElectionFactoryABI } from '../contracts/abis/Roles.json';
+import { ElectionABI } from  '../contracts/abis/Roles.json';
 
-dotenv.config({ path: '.env.local' });
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-
+// Your existing environment variables and constants...
 export const ROLES_CONTRACT_ADDRESS = import.meta.env.VITE_ROLES_CONTRACT || "";
 export const ELECTION_FACTORY_CONTRACT_ADDRESS = import.meta.env.VITE_FACTORY_CONTRACT || "";
 
@@ -33,7 +29,7 @@ export const CandidateStatus = {
     Rejected: "Rejected"
 };
 
-export const    NETWORK = {
+export const NETWORK = {
     SEPOLIA_CHAIN_ID: Number(import.meta.env.VITE_CHAIN_ID || 11155111),
     RPC_URL: import.meta.env.VITE_SEPOLIA_RPC || ""
 };
@@ -62,6 +58,5 @@ export const SUCCESS = {
     TX_SUBMITTED: "Transaction submitted"
 };
 
-export const RoleABI = JSON.parse(readFileSync(join(__dirname, "../contracts/abis/Roles.json"))).abi;
-export const ElectionFactoryABI = JSON.parse(readFileSync(join(__dirname, "../contracts/abis/ElectionFactory.json"))).abi;
-export const ElectionABI = JSON.parse(readFileSync(join(__dirname, "../contracts/abis/Election.json"))).abi;
+// Export the ABIs
+export { RolesABI as RoleABI, ElectionFactoryABI, ElectionABI };

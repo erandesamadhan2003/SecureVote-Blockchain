@@ -1,10 +1,16 @@
 import React from 'react';
-
 import './App.css';
+import { BrowserRouter, Routes, Route } from "react-router-dom";
+import HomePage from "./pages/HomePage.jsx";
 
 function App() {
   return (
-    <h1 className='text-3xl font-bold'>Hello</h1>
+    <BrowserRouter>
+      <Routes>
+        <Route path="/" element={<HomePage />} />
+        <Route path="*" element={<NotFound />} />
+      </Routes>
+    </BrowserRouter>
   );
 }
 

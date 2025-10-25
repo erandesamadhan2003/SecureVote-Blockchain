@@ -1,9 +1,9 @@
 import React, { useState } from "react";
 import { Link } from "react-router-dom";
 import useAuth from "../../hooks/useAuth.js";
-import ConnectWallet from "../common/ConnectWallet.jsx"; 
-import Button from "../common/Button.jsx"; 
-import LoginModal from "../auth/LoginModal.jsx"; 
+import ConnectWallet from "../common/ConnectWallet.jsx";
+import Button from "../common/Button.jsx";
+import LoginModal from "../auth/LoginModal.jsx";
 import RegisterModal from "../auth/RegisterModal.jsx"; // added
 import UserProfile from "../auth/UserProfile.jsx"; // added
 
@@ -88,19 +88,19 @@ export default function Navbar() {
 
                         {/* If authenticated show user profile dropdown, else show Login/Register */}
                         {isAuthenticated ? (
-                          <>
-                            {/* user profile dropdown */}
-                            <UserProfile />
-                          </>
+                            <>
+                                {/* user profile dropdown */}
+                                <UserProfile />
+                            </>
                         ) : (
-                          <>
-                            <Button variant="secondary" size="small" onClick={() => setLoginOpen(true)}>
-                              Login
-                            </Button>
-                            <Button variant="outline" size="small" onClick={() => setRegisterOpen(true)}>
-                              Register
-                            </Button>
-                          </>
+                            <>
+                                <Button variant="secondary" size="small" onClick={() => setLoginOpen(true)}>
+                                    Login
+                                </Button>
+                                <Button variant="outline" size="small" onClick={() => setRegisterOpen(true)}>
+                                    Register
+                                </Button>
+                            </>
                         )}
 
                         {/* Connect Wallet component */}

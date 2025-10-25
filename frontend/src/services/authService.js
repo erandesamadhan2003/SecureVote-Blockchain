@@ -2,7 +2,7 @@ import api from "./api.js";
 
 const TOKEN_KEY = "token";
 
-const setToken = (token) => {
+export const setToken = (token) => {
     try {
         localStorage.setItem(TOKEN_KEY, token);
         // ensure axios instance uses token immediately
@@ -13,7 +13,7 @@ const setToken = (token) => {
     }
 };
         
-const getToken = () => {
+export const getToken = () => {
     try {
         return localStorage.getItem(TOKEN_KEY);
     } catch {
@@ -21,7 +21,7 @@ const getToken = () => {
     }
 };
 
-const clearToken = () => {
+export const clearToken = () => {
     try {
         localStorage.removeItem(TOKEN_KEY);
         delete api.defaults.headers.common["Authorization"];
