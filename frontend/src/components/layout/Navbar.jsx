@@ -1,16 +1,21 @@
 import React, { useState } from "react";
 import { Link } from "react-router-dom";
+import { useSelector, useDispatch } from "react-redux";
 import useAuth from "../../hooks/useAuth.js";
 import ConnectWallet from "../common/ConnectWallet.jsx";
 import Button from "../common/Button.jsx";
 import LoginModal from "../auth/LoginModal.jsx";
 import RegisterModal from "../auth/RegisterModal.jsx"; // added
 import UserProfile from "../auth/UserProfile.jsx"; // added
+import { openModal, closeModal, selectModalOpen } from "../../redux/slices/uiSlice.js";
 
 export default function Navbar() {
     const [mobileOpen, setMobileOpen] = useState(false);
-    const [loginOpen, setLoginOpen] = useState(false);
-    const [registerOpen, setRegisterOpen] = useState(false); // added
+    const dispatch = useDispatch();
+
+    const loginOpen = useSelector(selectModalOpen("login"));
+    const registerOpen = useSelector(selectModalOpen("register"));
+
     const { user, walletAddress, isAuthenticated, wallet, isManager, isAuthority, isSuperAdmin, isVoter } = useAuth();
 
     const chainId = wallet?.chainId ?? null;
@@ -23,6 +28,12 @@ export default function Navbar() {
         aliceBlue: "#E5ECF2",
         silver: "#C3C5C4"
     };
+
+    // open/close modal helpers using redux
+    const handleOpenLogin = () => dispatch(openModal("login"));
+    const handleCloseLogin = () => dispatch(closeModal("login"));
+    const handleOpenRegister = () => dispatch(openModal("register"));
+    const handleCloseRegister = () => dispatch(closeModal("register"));
 
     return (
         <header
@@ -58,16 +69,18 @@ export default function Navbar() {
                         <Link to="/elections" className="px-3 py-2 rounded-md text-sm font-medium hover:bg-white/40">
                             Elections
                         </Link>
-                        {isAuthenticated && <Link to="/my" className="px-3 py-2 rounded-md text-sm font-medium hover:bg-white/40">My Elections</Link>}
+                        {isAuthenticated && <Link to="/my-elections" className="px-3 py-2 rounded-md text-sm font-medium hover:bg-white/40">My Elections</Link>}
                         {(isManager || isSuperAdmin) && (
-                            <Link to="/create" className="px-3 py-2 rounded-md text-sm font-medium hover:bg-white/40">Create Election</Link>
+                            <Link to="/elections/create" className="px-3 py-2 rounded-md text-sm font-medium hover:bg-white/40">Create Election</Link>
                         )}
                         {(isManager || isAuthority || isSuperAdmin) && (
-                            <Link to="/candidates" className="px-3 py-2 rounded-md text-sm font-medium hover:bg-white/40">Candidates</Link>
+                            <Link to="/candidates/manage" className="px-3 py-2 rounded-md text-sm font-medium hover:bg-white/40">Manage Candidates</Link>
                         )}
-                        <Link to="/results" className="px-3 py-2 rounded-md text-sm font-medium hover:bg-white/40">Results</Link>
+                        {isAuthority && (
+                            <Link to="/voters/register" className="px-3 py-2 rounded-md text-sm font-medium hover:bg-white/40">Register Voters</Link>
+                        )}
                         {isSuperAdmin && (
-                            <Link to="/admin" className="px-3 py-2 rounded-md text-sm font-medium hover:bg-white/40">Admin</Link>
+                            <Link to="/admin/dashboard" className="px-3 py-2 rounded-md text-sm font-medium hover:bg-white/40">Admin</Link>
                         )}
                     </nav>
 
@@ -94,10 +107,10 @@ export default function Navbar() {
                             </>
                         ) : (
                             <>
-                                <Button variant="secondary" size="small" onClick={() => setLoginOpen(true)}>
+                                <Button variant="secondary" size="small" onClick={handleOpenLogin}>
                                     Login
                                 </Button>
-                                <Button variant="outline" size="small" onClick={() => setRegisterOpen(true)}>
+                                <Button variant="outline" size="small" onClick={handleOpenRegister}>
                                     Register
                                 </Button>
                             </>
@@ -131,11 +144,12 @@ export default function Navbar() {
                 <div className="md:hidden border-t" style={{ background: theme.oldLace }}>
                     <div className="px-4 py-3 space-y-2">
                         <Link to="/elections" className="block px-2 py-2 rounded-md">Elections</Link>
-                        {isAuthenticated && <Link to="/my" className="block px-2 py-2 rounded-md">My Elections</Link>}
-                        {(isManager || isSuperAdmin) && <Link to="/create" className="block px-2 py-2 rounded-md">Create Election</Link>}
-                        {(isManager || isAuthority || isSuperAdmin) && <Link to="/candidates" className="block px-2 py-2 rounded-md">Candidates</Link>}
-                        <Link to="/results" className="block px-2 py-2 rounded-md">Results</Link>
-                        {isSuperAdmin && <Link to="/admin" className="block px-2 py-2 rounded-md">Admin</Link>}
+                        {isAuthenticated && <Link to="/my-elections" className="block px-2 py-2 rounded-md">My Elections</Link>}
+                        {(isManager || isSuperAdmin) && <Link to="/elections/create" className="block px-2 py-2 rounded-md">Create Election</Link>}
+                        {(isManager || isAuthority || isSuperAdmin) && <Link to="/candidates/manage" className="block px-2 py-2 rounded-md">Manage Candidates</Link>}
+                        {isAuthority && <Link to="/voters/register" className="block px-2 py-2 rounded-md">Register Voters</Link>}
+                        <Link to="/elections" className="block px-2 py-2 rounded-md">Results</Link>
+                        {isSuperAdmin && <Link to="/admin/dashboard" className="block px-2 py-2 rounded-md">Admin</Link>}
                         <div className="pt-2 border-t">
                             <div className="text-xs text-gray-600 px-2">Network: {chainId ?? "Not connected"}</div>
                             <div className="mt-2"><ConnectWallet /></div>
@@ -144,11 +158,25 @@ export default function Navbar() {
                 </div>
             )}
 
-            {/* Login modal (pass handler so Login can open Register) */}
-            <LoginModal isOpen={loginOpen} onClose={() => setLoginOpen(false)} onOpenRegister={() => { setLoginOpen(false); setRegisterOpen(true); }} />
+            {/* Login modal (open via redux) */}
+            <LoginModal
+                isOpen={!!loginOpen}
+                onClose={() => { handleCloseLogin(); }}
+                onOpenRegister={() => {
+                    handleCloseLogin();
+                    handleOpenRegister();
+                }}
+            />
 
-            {/* Register modal */}
-            <RegisterModal isOpen={registerOpen} onClose={() => setRegisterOpen(false)} onOpenLogin={() => { setRegisterOpen(false); setLoginOpen(true); }} />
+            {/* Register modal (open via redux) */}
+            <RegisterModal
+                isOpen={!!registerOpen}
+                onClose={() => { handleCloseRegister(); }}
+                onOpenLogin={() => {
+                    handleCloseRegister();
+                    handleOpenLogin();
+                }}
+            />
         </header>
     );
-}   
+}

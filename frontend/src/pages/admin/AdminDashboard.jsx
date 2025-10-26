@@ -37,10 +37,11 @@ export default function AdminDashboard() {
     const fetchAll = async () => {
         setLoading(true);
         try {
+            // backend exposes dashboard endpoints at /api/dashboard/*
             const [statsRes, activitiesRes, healthRes] = await Promise.allSettled([
-                api.get("/admin/stats"),
-                api.get("/admin/activities?limit=20"),
-                api.get("/admin/health")
+                api.get("/dashboard/stats"),
+                api.get("/dashboard/activities?limit=20"),
+                api.get("/dashboard/health")
             ]);
 
             if (statsRes.status === "fulfilled" && statsRes.value) {
@@ -66,8 +67,10 @@ export default function AdminDashboard() {
                 setRecentActivities(activitiesRes.value.activities);
             }
 
+            // healthRes may be server root or a health object; try to map best-effort
             if (healthRes.status === "fulfilled" && healthRes.value) {
                 const h = healthRes.value;
+                // if root returned { status, env } we set minimal info; if detailed health exists use that
                 setSystemHealth({
                     db: !!h.dbStatus && h.dbStatus === "ok",
                     blockchain: !!h.blockchain && h.blockchain.status === "ok",
@@ -88,7 +91,7 @@ export default function AdminDashboard() {
         fetchAll();
         const interval = setInterval(async () => {
             try {
-                const h = await api.get("/admin/health").catch(() => null);
+                const h = await api.get("/dashboard/health").catch(() => null);
                 if (h) {
                     setSystemHealth({
                         db: !!h.dbStatus && h.dbStatus === "ok",
@@ -271,3 +274,4 @@ export default function AdminDashboard() {
         </div>
     );
 }
+

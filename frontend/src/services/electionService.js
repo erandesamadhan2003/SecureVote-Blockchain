@@ -35,8 +35,10 @@ export const getElectionById = async (id) => {
 export const getMyElections = async () => {
     try {
         const res = await api.get("/elections/my");
+        console.log("getMyElections response:", res);
         return res;
     } catch (err) {
+        console.error("getMyElections error:", err);
         throw err;
     }
 };
@@ -115,7 +117,12 @@ export const updateElectionStatus = async (id, status) => {
         const res = await api.post(endpoint);
         return res;
     } catch (err) {
-        throw err;
+        // axios-style error parsing
+        const message =
+            err?.response?.data?.message ||
+            err?.message ||
+            "Failed to update election status";
+        throw new Error(message);
     }
 };
 

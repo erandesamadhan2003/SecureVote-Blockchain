@@ -33,7 +33,7 @@ export default function AllElections() {
 
 	return (
 		<div className="max-w-7xl mx-auto px-4 py-8 space-y-6">
-			<div className="flex items-center justify-between">
+			<div className=" items-center justify-between">
 				<h1 className="text-2xl font-semibold">All Elections</h1>
 				{isManager && (
 					<Button variant="primary" size="medium" onClick={() => (window.location.href = "/create")}>
@@ -42,12 +42,12 @@ export default function AllElections() {
 				)}
 			</div>
 
-			<div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-				<div className="lg:col-span-1">
+			<div className="">
+				<div className="mb-12">
 					<ElectionFilters initialFilters={filters} onFilterChange={onFilterChange} />
 				</div>
 
-				<div className="lg:col-span-3">
+				<div className="">
 					<ElectionList elections={elections} isLoading={isLoading} showManageButtons={isManager} />
 
 					{/* Simple pagination controls */}

@@ -18,6 +18,17 @@ const Unauthorized = () => (
   </div>
 );
 
+const roleMatches = (userRole, required) => {
+  if (!required) return true;
+  const u = String(userRole || "").toUpperCase();
+  // SUPER_ADMIN bypasses all checks
+  if (u === "SUPER_ADMIN") return true;
+
+  // required can be string or array
+  const requiredList = Array.isArray(required) ? required : [required];
+  return requiredList.map((r) => String(r || "").toUpperCase()).includes(u);
+};
+
 const ProtectedRoute = ({ requiredRole }) => {
   const dispatch = useDispatch();
   const { isAuthenticated, user } = useSelector((state) => state.auth || {});
@@ -34,10 +45,11 @@ const ProtectedRoute = ({ requiredRole }) => {
     return <Navigate to="/" replace />;
   }
 
+  // if requiredRole is provided, check permissions (SUPER_ADMIN bypasses)
   if (requiredRole) {
     const userRole = (user?.role || "").toString().toUpperCase();
-    const needed = String(requiredRole).toUpperCase();
-    if (userRole !== needed) {
+    const allowed = roleMatches(userRole, requiredRole);
+    if (!allowed) {
       return <Unauthorized />;
     }
   }

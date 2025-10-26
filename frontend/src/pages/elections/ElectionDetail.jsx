@@ -139,6 +139,8 @@ export default function ElectionDetail() {
             await loadElection();
         } catch (err) {
             console.error("Status change failed:", err);
+            // show user-friendly toast if available
+            try { showError(err?.message || "Status change failed"); } catch { /* ignore if hook not present */ }
         }
     };
 
@@ -146,7 +148,23 @@ export default function ElectionDetail() {
 
     return (
         <div className="max-w-7xl mx-auto px-4 py-8 space-y-6">
-            <ElectionDetails election={election} onStatusChange={handleStatusChange} />
+            {isLoading ? (
+                <Card>
+                    <div className="p-6 text-center text-sm text-gray-600">Loading election…</div>
+                </Card>
+            ) : !election ? (
+                <Card>
+                    <div className="p-6 text-center">
+                        <h3 className="text-lg font-medium">Election not found</h3>
+                        <p className="mt-2 text-sm text-gray-600">Unable to load election details.</p>
+                        <div className="mt-4">
+                            <Button variant="outline" size="small" onClick={() => window.history.back()}>Go Back</Button>
+                        </div>
+                    </div>
+                </Card>
+            ) : (
+                <ElectionDetails election={election} onStatusChange={handleStatusChange} />
+            )}
 
             <Card>
                 <div className="flex items-center justify-between">

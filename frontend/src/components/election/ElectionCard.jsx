@@ -111,7 +111,7 @@ export default function ElectionCard({ election = {}, showManageButton = false }
                     </Link>
 
                     {showManageButton && (
-                        <Link to={`/elections/${id}/manage`}>
+                        <Link to={`/candidates/manage?electionId=${encodeURIComponent(id)}`}>
                             <Button variant="outline" size="small">Manage</Button>
                         </Link>
                     )}

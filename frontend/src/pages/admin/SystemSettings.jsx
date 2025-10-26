@@ -5,10 +5,6 @@ import useAuth from "../../hooks/useAuth.js";
 import useToast from "../../hooks/useToast.js";
 import Card from "../../components/common/Card.jsx";
 import Button from "../../components/common/Button.jsx";
-import { Input } from "@/components/ui/input.jsx";
-import { Textarea } from "@/components/ui/textarea.jsx";
-import { Toggle } from "@radix-ui/react-toggle";
-import { Accordion } from "@radix-ui/react-accordion";
 
 /**
  * Admin System Settings page
@@ -161,6 +157,81 @@ export default function SystemSettings() {
     } catch (err) {
       showError(err?.message || "Reset failed");
     }
+  };
+
+  // Removed problematic imports and provide minimal local implementations below
+  // (keeps the page self-contained and avoids undefined component errors)
+
+  // Minimal Input component
+  const Input = ({ label, value, onChange, type = "text", placeholder = "", readOnly = false }) => (
+    <div>
+      {label && <label className="text-xs text-gray-600 block mb-1">{label}</label>}
+      <input
+        className="w-full px-3 py-2 border rounded"
+        type={type}
+        value={value ?? ""}
+        placeholder={placeholder}
+        readOnly={readOnly}
+        onChange={(e) => onChange && onChange(e.target.value)}
+      />
+    </div>
+  );
+
+  // Minimal Textarea component
+  const Textarea = ({ label, value, onChange, rows = 4, placeholder = "" }) => (
+    <div>
+      {label && <label className="text-xs text-gray-600 block mb-1">{label}</label>}
+      <textarea
+        className="w-full px-3 py-2 border rounded"
+        rows={rows}
+        value={value ?? ""}
+        placeholder={placeholder}
+        onChange={(e) => onChange && onChange(e.target.value)}
+      />
+    </div>
+  );
+
+  // Minimal Toggle component
+  const Toggle = ({ label, checked = false, onChange }) => (
+    <div className="flex items-center gap-3">
+      <label className="text-sm">{label}</label>
+      <input
+        type="checkbox"
+        className="w-5 h-5"
+        checked={!!checked}
+        onChange={(e) => onChange && onChange(e.target.checked)}
+      />
+    </div>
+  );
+
+  // Minimal Accordion with Item subcomponent
+  const Accordion = ({ active, onChange, children }) => {
+    return (
+      <div>
+        {React.Children.map(children, (child) =>
+          React.isValidElement(child)
+            ? React.cloneElement(child, { parentActive: active, parentOnChange: onChange })
+            : child
+        )}
+      </div>
+    );
+  };
+
+  Accordion.Item = ({ id, title, children, parentActive, parentOnChange }) => {
+    const open = parentActive === id;
+    return (
+      <div className="border-b py-3">
+        <button
+          type="button"
+          onClick={() => parentOnChange && parentOnChange(open ? null : id)}
+          className="w-full text-left flex items-center justify-between"
+        >
+          <span className="font-medium">{title}</span>
+          <span className="text-sm text-gray-500">{open ? "−" : "+"}</span>
+        </button>
+        {open && <div className="mt-3">{children}</div>}
+      </div>
+    );
   };
 
   return (

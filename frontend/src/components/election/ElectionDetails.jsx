@@ -3,7 +3,7 @@ import Card from "../common/Card.jsx";
 import Button from "../common/Button.jsx";
 import ElectionTimeline from "./ElectionTimeline.jsx";
 import useAuth from "../../hooks/useAuth.js";
-import { formatDate } from "../../utils/helpers.js";
+import { formatDate, getElectionStatus } from "../../utils/helpers.js";
 import { Trophy, Users, List, BarChart } from "lucide-react";
 
 /**
@@ -25,7 +25,8 @@ export default function ElectionDetails({ election = {}, onStatusChange = async 
     const totalVotes = Number(election.totalVotes ?? election.votes ?? 0);
     const turnout = totalVoters > 0 ? `${((totalVotes / totalVoters) * 100).toFixed(2)}%` : "0.00%";
 
-    const status = election.status || election._status || "Created";
+    // prefer explicit status from backend; fallback to heuristic helper
+    const status = election.status || election._status || getElectionStatus(election) || "Created";
 
     const formattedDates = useMemo(() => ({
         start: election.startTime ? formatDate(new Date(election.startTime)) : "TBD",

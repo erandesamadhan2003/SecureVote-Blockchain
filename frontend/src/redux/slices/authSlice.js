@@ -19,6 +19,7 @@ export const connectWallet = createAsyncThunk("auth/connectWallet", async (_, { 
             throw new Error("MetaMask is not installed");
         }
         const accounts = await window.ethereum.request({ method: "eth_requestAccounts" });
+        console.log("Accounts returned from eth_requestAccounts:", accounts);       
         const walletAddress = accounts[0];
         
         const message = `Sign this message to authenticate your wallet: ${walletAddress}`;

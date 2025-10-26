@@ -27,30 +27,48 @@ export default function ElectionForm({ onSubmit, initialData = {}, isEdit = fals
         return `${yyyy}-${mm}-${dd}T${hh}:${min}`;
     };
 
+    // stable serialized initial data
+    const initialJSON = useMemo(() => JSON.stringify(initialData || {}), [initialData]);
+
     const [step, setStep] = useState(1);
-    const [form, setForm] = useState({
+    const [form, setForm] = useState(() => ({
         name: initialData.name || "",
         description: initialData.description || "",
-        registrationDeadline: toInputValue(initialData.registrationDeadline || initialData.registrationDeadline),
-        startTime: toInputValue(initialData.startTime || initialData.startTime),
-        endTime: toInputValue(initialData.endTime || initialData.endTime),
+        registrationDeadline: toInputValue(initialData.registrationDeadline),
+        startTime: toInputValue(initialData.startTime),
+        endTime: toInputValue(initialData.endTime),
         createdAt: initialData.createdAt || new Date().toISOString()
-    });
+    }));
     const [errors, setErrors] = useState({});
     const [isSubmitting, setIsSubmitting] = useState(false);
 
+    // update local form only when incoming initialData actually differs from current form fields
     useEffect(() => {
-        setForm((f) => ({
-            ...f,
-            name: initialData.name || f.name,
-            description: initialData.description || f.description,
-            registrationDeadline: toInputValue(initialData.registrationDeadline) || f.registrationDeadline,
-            startTime: toInputValue(initialData.startTime) || f.startTime,
-            endTime: toInputValue(initialData.endTime) || f.endTime,
-            createdAt: initialData.createdAt || f.createdAt
-        }));
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [initialData]);
+        try {
+            const parsed = JSON.parse(initialJSON || "{}");
+            const newValues = {
+                name: parsed.name ?? "",
+                description: parsed.description ?? "",
+                registrationDeadline: toInputValue(parsed.registrationDeadline),
+                startTime: toInputValue(parsed.startTime),
+                endTime: toInputValue(parsed.endTime),
+                createdAt: parsed.createdAt ?? form.createdAt
+            };
+            const needsUpdate =
+                newValues.name !== form.name ||
+                newValues.description !== form.description ||
+                newValues.registrationDeadline !== form.registrationDeadline ||
+                newValues.startTime !== form.startTime ||
+                newValues.endTime !== form.endTime;
+
+            if (needsUpdate) {
+                setForm((f) => ({ ...f, ...newValues }));
+            }
+            // eslint-disable-next-line react-hooks/exhaustive-deps
+        } catch (e) {
+            // ignore parse errors
+        }
+    }, [initialJSON]);
 
     const validateStep1 = useCallback(() => {
         const e = {};

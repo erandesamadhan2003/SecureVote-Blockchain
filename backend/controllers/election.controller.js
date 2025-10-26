@@ -13,16 +13,17 @@ export const createElection = async (req, res) => {
             });
         }
 
-        const creator = await User.findOne({ walletAddress: req.user.walletAddress.toLowerCase() });
-        if (!creator) {
-            return res.status(404).json({ message: "User not found" });
-        }
-
         const startTimeBigInt = Math.floor(new Date(startTime).getTime() / 1000);
         const endTimeBigInt = Math.floor(new Date(endTime).getTime() / 1000);
         const registrationDeadlineBigInt = Math.floor(new Date(registrationDeadline).getTime() / 1000);
 
         const currentTime = Math.floor(Date.now() / 1000);
+
+        // New validation: registration deadline must be in the future (so Registration window is openable)
+        if (registrationDeadlineBigInt <= currentTime) {
+            return res.status(400).json({ message: "Registration deadline must be in the future" });
+        }
+
         if (startTimeBigInt <= currentTime) {
             return res.status(400).json({ message: "Start time must be in the future" });
         }
@@ -47,14 +48,15 @@ export const createElection = async (req, res) => {
         const receipt = await tx.wait();
         console.log("Transaction confirmed in block:", receipt.blockNumber);
 
+        // ...existing event parsing & DB persistence...
         let electionId;
         let contractAddress;
 
         if (receipt.events && receipt.events.length > 0) {
             for (const event of receipt.events) {
-                if (event.event === "ElectionCreated") {
-                    electionId = event.args.electionId.toString();
-                    contractAddress = event.args.electionAddress;
+                if (event.event === "ElectionCreated" || event.event === "ElectionCreated(uint256,address,address,string,uint256,uint256)") {
+                    electionId = event.args?.electionId?.toString?.() ?? (event.args && event.args[0] ? String(event.args[0]) : undefined);
+                    contractAddress = event.args?.electionAddress ?? (event.args && event.args[1] ? event.args[1] : undefined);
                     break;
                 }
             }
@@ -63,22 +65,20 @@ export const createElection = async (req, res) => {
         if (!electionId) {
             console.log("Events not found in receipt, fetching latest election ID...");
             electionId = (await electionFactoryContract.getElectionIdCounter()).toString();
-            
             const electionData = await electionFactoryContract.getElection(electionId);
             contractAddress = electionData.electionAddress;
         }
 
         console.log(`Election created - ID: ${electionId}, Address: ${contractAddress}`);
 
-        // normalize creator wallet for storage
-        const creatorWallet = creator.walletAddress.toLowerCase();
+        const creatorWalletNormalized = (req?.user?.walletAddress || (wallet && wallet.address) || "").toLowerCase() || undefined;
 
         const election = await Election.create({
             electionId: parseInt(electionId),
             contractAddress: contractAddress.toLowerCase(),
             name,
             description: description || "",
-            creator: creatorWallet,
+            creator: creatorWalletNormalized || "backend",
             startTime: new Date(startTime),
             endTime: new Date(endTime),
             registrationDeadline: new Date(registrationDeadline),
@@ -101,8 +101,18 @@ export const createElection = async (req, res) => {
 
     } catch (err) {
         console.error("Create Election error:", err);
-        
-        // Handle specific blockchain errors
+
+        // Provide clearer client errors for common revert/estimate failures
+        if (err && err.code === "UNPREDICTABLE_GAS_LIMIT" && err.error && err.error.body) {
+            // try to extract revert reason if present
+            try {
+                const body = JSON.parse(err.error.body);
+                const rpcErr = body?.error;
+                if (rpcErr?.message) return res.status(400).json({ message: rpcErr.message });
+            } catch (parseErr) { /* ignore */ }
+            return res.status(400).json({ message: "Transaction would revert (cannot estimate gas). Check provided times/params." });
+        }
+
         if (err.code === 'INSUFFICIENT_FUNDS') {
             return res.status(400).json({ message: "Insufficient funds for transaction" });
         }
@@ -151,23 +161,19 @@ export const getAllElections = async (req, res) => {
 export const getElectionById = async (req, res) => {
 	try {
 		const { id } = req.params;
-		if (!id) {
-			return res.status(400).json({ message: "election id is required" });
-		}
+		if (!id) return res.status(400).json({ message: "election id is required" });
 		const numericId = parseInt(id, 10);
-		if (Number.isNaN(numericId)) {
-			return res.status(400).json({ message: "invalid election id" });
-		}
+		if (Number.isNaN(numericId)) return res.status(400).json({ message: "invalid election id" });
 
 		// try DB first
 		const election = await Election.findOne({ electionId: numericId }).lean();
 		if (election) {
+			// ensure status is present if stored in DB
 			return res.json({ source: "db", election });
 		}
 
 		// fallback to on-chain
 		const onChain = await electionFactoryContract.getElection(numericId);
-		// contract returns a struct; map to friendly object
 		const mapped = {
 			electionId: onChain.id.toString(),
 			contractAddress: onChain.electionAddress,
@@ -177,13 +183,15 @@ export const getElectionById = async (req, res) => {
 			startTime: new Date(onChain.startTime.toNumber() * 1000),
 			endTime: new Date(onChain.endTime.toNumber() * 1000),
 			createdAt: new Date(onChain.createdAt.toNumber() * 1000),
-			isActive: onChain.isActive
+			isActive: onChain.isActive,
+			// map status if available
+			status: onChain.status !== undefined ? mapChainStatus(onChain.status) : (onChain._status !== undefined ? mapChainStatus(onChain._status) : undefined),
+			registrationDeadline: onChain.registrationDeadline ? (onChain.registrationDeadline.toNumber ? new Date(onChain.registrationDeadline.toNumber() * 1000) : new Date(Number(onChain.registrationDeadline) * 1000)) : undefined
 		};
 
 		return res.json({ source: "chain", election: mapped });
 	} catch (err) {
 		console.error("getElectionById error:", err);
-		// ABI/contract call may revert for non-existing id
 		return res.status(500).json({ message: "Server error" });
 	}
 };
@@ -208,13 +216,62 @@ export const startCandidateRegistration = async (req, res) => {
 		const { id } = req.params;
 		if (!id) return res.status(400).json({ message: "election id required" });
 
+		// Determine current status and registrationDeadline (DB first)
+		let registrationDeadlineTs = null;
+		let currentStatus = null;
+
+		if (!/^0x/i.test(String(id))) {
+			const numericId = parseInt(id, 10);
+			const db = await Election.findOne({ electionId: numericId }).lean();
+			if (db) {
+				if (db.registrationDeadline) registrationDeadlineTs = new Date(db.registrationDeadline).getTime() / 1000;
+				if (db.status) currentStatus = String(db.status);
+			}
+		}
+
+		// fallback to on-chain election info for missing fields
+		if (registrationDeadlineTs == null || currentStatus == null) {
+			try {
+				const onChain = await electionFactoryContract.getElection(parseInt(id, 10));
+				if (registrationDeadlineTs == null && onChain.registrationDeadline) {
+					registrationDeadlineTs = onChain.registrationDeadline?.toNumber ? onChain.registrationDeadline.toNumber() : null;
+				}
+				if (currentStatus == null && onChain.status !== undefined) {
+					currentStatus = mapChainStatus(onChain.status);
+				}
+			} catch (e) {
+				// ignore; we'll validate later and let contract return a clear error if necessary
+			}
+		}
+
+		// If we know status, enforce it must be "Created" before starting registration
+		if (currentStatus && currentStatus !== "Created") {
+			return res.status(400).json({ message: `Cannot start registration: invalid election status (${currentStatus})` });
+		}
+
+		const now = Math.floor(Date.now() / 1000);
+		if (registrationDeadlineTs != null && registrationDeadlineTs <= now) {
+			return res.status(400).json({ message: "Cannot start registration: registration deadline has already passed" });
+		}
+
 		const contract = await loadElectionContractForId(id);
 		const tx = await contract.startCandidateRegistration();
 		const receipt = await tx.wait();
 		return res.json({ message: "Registration started", txHash: tx.hash, blockNumber: receipt.blockNumber });
 	} catch (err) {
 		console.error("startCandidateRegistration error:", err);
-		return res.status(500).json({ message: err?.reason || err.message || "Server error" });
+
+		// return user-friendly message if revert reason present
+		if (err && err.code === "UNPREDICTABLE_GAS_LIMIT" && err.error && err.error.body) {
+			try {
+				const body = JSON.parse(err.error.body);
+				const rpcErr = body?.error;
+				if (rpcErr?.message) return res.status(400).json({ message: rpcErr.message });
+			} catch (parseErr) { /* ignore */ }
+		}
+		// fallback: if rpc returned a direct error.message
+		if (err?.error?.message) return res.status(400).json({ message: err.error.message });
+		return res.status(500).json({ message: err?.reason || err?.message || "Server error" });
 	}
 };
 
@@ -529,6 +586,20 @@ export const deactivateElection = async (req, res) => {
 	}
 };
 
+// helper: map numeric on-chain ElectionStatus to string
+const mapChainStatus = (val) => {
+	// val may be BigNumber, number or string
+	const n = (val && val.toNumber) ? Number(val.toNumber()) : Number(val);
+	switch (n) {
+		case 0: return "Created";
+		case 1: return "Registration";
+		case 2: return "Voting";
+		case 3: return "Ended";
+		case 4: return "ResultDeclared";
+		default: return "Unknown";
+	}
+};
+
 // helper to map chain election struct to plain object
 const mapChainElection = (e) => ({
 	electionId: e.id.toString(),
@@ -539,7 +610,10 @@ const mapChainElection = (e) => ({
 	startTime: new Date(e.startTime.toNumber() * 1000),
 	endTime: new Date(e.endTime.toNumber() * 1000),
 	createdAt: new Date(e.createdAt.toNumber() * 1000),
-	isActive: e.isActive
+	isActive: e.isActive,
+	// map status if available
+	status: e.status !== undefined ? mapChainStatus(e.status) : (e._status !== undefined ? mapChainStatus(e._status) : undefined),
+	registrationDeadline: e.registrationDeadline ? (e.registrationDeadline.toNumber ? new Date(e.registrationDeadline.toNumber() * 1000) : new Date(Number(e.registrationDeadline) * 1000)) : undefined
 });
 
 // new: GET /api/elections/active

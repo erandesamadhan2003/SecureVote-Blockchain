@@ -8,6 +8,8 @@ import roleRoutes from "./routes/roles.routes.js";
 import candidateRoutes from "./routes/candidate.routes.js";
 import votesRoutes from "./routes/votes.routes.js";
 import resultRoutes from "./routes/result.routes.js";
+import dashboardRoutes from "./routes/dashboard.routes.js"; // added earlier
+import adminRoutes from "./routes/admin.routes.js"; // <-- added
 
 import { provider, wallet, roleContract, electionFactoryContract } from "./utils/blockchain.js";
 import { ethers } from "ethers";
@@ -36,6 +38,12 @@ app.use("/api/roles", roleRoutes);
 
 // mount result routes
 app.use("/api/results", resultRoutes);
+
+// mount dashboard routes (stats & recent activities)
+app.use("/api/dashboard", dashboardRoutes);
+
+// mount admin routes
+app.use("/api/admin", adminRoutes);
 
 // Simple health route
 app.get("/", (req, res) => {

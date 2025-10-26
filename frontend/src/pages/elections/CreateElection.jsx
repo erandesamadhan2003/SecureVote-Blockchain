@@ -10,7 +10,7 @@ import { createNewElection } from "../../redux/slices/electionSlice.js";
 
 export default function CreateElection() {
 	// ...state & hooks...
-	const { isManager, isSuperAdmin } = useAuth();
+	const { isManager, isSuperAdmin, user } = useAuth();
 	const dispatch = useDispatch();
 	const navigate = useNavigate();
 	const { showSuccess, showError } = useToast();
@@ -20,7 +20,11 @@ export default function CreateElection() {
 		async (formPayload) => {
 			setIsSubmitting(true);
 			try {
-				const action = await dispatch(createNewElection(formPayload));
+				// attach creator if available (backend will accept or ignore)
+				const payload = { ...formPayload };
+				if (user?.walletAddress) payload.creator = user.walletAddress;
+
+				const action = await dispatch(createNewElection(payload));
 				if (action.error) throw new Error(action.error.message || "Failed to create election");
 				const res = action.payload || {};
 				// attempt to extract created election id/address
@@ -28,7 +32,6 @@ export default function CreateElection() {
 				const id =
 					created?.electionId ??
 					created?.id ??
-					created?.electionId ??
 					created?._id ??
 					res?.electionId ??
 					res?.id;
@@ -47,7 +50,7 @@ export default function CreateElection() {
 				setIsSubmitting(false);
 			}
 		},
-		[dispatch, navigate, showError, showSuccess]
+		[dispatch, navigate, showError, showSuccess, user]
 	);
 
 	// Not authorized view
