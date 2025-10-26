@@ -35,11 +35,15 @@ export const getElectionById = async (id) => {
 export const getMyElections = async () => {
     try {
         const res = await api.get("/elections/my");
-        console.log("getMyElections response:", res);
-        return res;
+        // return the response body (axios puts payload in res.data)
+        const data = res?.data ?? res;
+        console.log("getMyElections response:", data);
+        return data;
     } catch (err) {
-        console.error("getMyElections error:", err);
-        throw err;
+        // surface backend message if available
+        const message = err?.response?.data?.message || err?.message || "Failed to fetch my elections";
+        console.error("getMyElections error:", message);
+        throw new Error(message);
     }
 };
 

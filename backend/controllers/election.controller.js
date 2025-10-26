@@ -19,11 +19,10 @@ export const createElection = async (req, res) => {
 
         const currentTime = Math.floor(Date.now() / 1000);
 
-        // New validation: registration deadline must be in the future (so Registration window is openable)
+        // Basic validation to avoid common contract revert reasons
         if (registrationDeadlineBigInt <= currentTime) {
             return res.status(400).json({ message: "Registration deadline must be in the future" });
         }
-
         if (startTimeBigInt <= currentTime) {
             return res.status(400).json({ message: "Start time must be in the future" });
         }
@@ -35,26 +34,77 @@ export const createElection = async (req, res) => {
         }
 
         console.log("Creating election on blockchain...");
-        const tx = await electionFactoryContract.createElection(
-            name,
-            description || "", 
-            startTimeBigInt,
-            endTimeBigInt,
-            registrationDeadlineBigInt
-        );
+
+        // Build argument list based on factory ABI signature
+        let tx;
+        try {
+            // If ABI is available, inspect function input count
+            let createFn;
+            try {
+                createFn = electionFactoryContract.interface.getFunction("createElection");
+            } catch (e) {
+                // fallback: function lookup failed; we'll try default 5-arg call
+                createFn = null;
+            }
+
+            // default args (most common)
+            const baseArgs = [name, description || "", startTimeBigInt, endTimeBigInt, registrationDeadlineBigInt];
+
+            // determine if factory expects an extra creator/manager argument
+            if (createFn && Array.isArray(createFn.inputs) && createFn.inputs.length > baseArgs.length) {
+                // try to supply an additional address (prefer authenticated user, else backend admin wallet)
+                const creatorAddr = (req?.user?.walletAddress && String(req.user.walletAddress)) || (wallet && wallet.address) || undefined;
+                const args = creatorAddr ? [...baseArgs, creatorAddr] : [...baseArgs, ethers.constants.AddressZero];
+                tx = await electionFactoryContract.createElection(...args);
+            } else {
+                // typical 5-arg signature
+                tx = await electionFactoryContract.createElection(...baseArgs);
+            }
+        } catch (err) {
+            console.error("createElection (tx send) error:", err);
+            // If error indicates missing argument, try the other arity automatically
+            if (err && err.code === "MISSING_ARGUMENT") {
+                try {
+                    const baseArgs = [name, description || "", startTimeBigInt, endTimeBigInt, registrationDeadlineBigInt];
+                    const creatorAddr = (req?.user?.walletAddress && String(req.user.walletAddress)) || (wallet && wallet.address) || ethers.constants.AddressZero;
+                    tx = await electionFactoryContract.createElection(...baseArgs, creatorAddr);
+                } catch (retryErr) {
+                    console.error("createElection retry error:", retryErr);
+                    // try to extract RPC revert reason if present
+                    if (retryErr && retryErr.error && retryErr.error.body) {
+                        try {
+                            const body = JSON.parse(retryErr.error.body);
+                            const rpcErr = body?.error;
+                            if (rpcErr?.message) return res.status(400).json({ message: rpcErr.message });
+                        } catch (parseErr) { /* ignore */ }
+                    }
+                    return res.status(500).json({ message: retryErr?.message || "Failed to call createElection" });
+                }
+            } else {
+                // try to extract revert reason if available
+                if (err && err.error && err.error.body) {
+                    try {
+                        const body = JSON.parse(err.error.body);
+                        const rpcErr = body?.error;
+                        if (rpcErr?.message) return res.status(400).json({ message: rpcErr.message });
+                    } catch (parseErr) { /* ignore */ }
+                }
+                return res.status(500).json({ message: err?.message || "Failed to call createElection" });
+            }
+        }
 
         console.log("Transaction sent:", tx.hash);
-        
         const receipt = await tx.wait();
         console.log("Transaction confirmed in block:", receipt.blockNumber);
 
-        // ...existing event parsing & DB persistence...
+        // parse created election id & address from events or fallback
         let electionId;
         let contractAddress;
 
         if (receipt.events && receipt.events.length > 0) {
             for (const event of receipt.events) {
-                if (event.event === "ElectionCreated" || event.event === "ElectionCreated(uint256,address,address,string,uint256,uint256)") {
+                // match by event name or fallback by signature
+                if (event.event && event.event.toString().toLowerCase().includes("electioncreated")) {
                     electionId = event.args?.electionId?.toString?.() ?? (event.args && event.args[0] ? String(event.args[0]) : undefined);
                     contractAddress = event.args?.electionAddress ?? (event.args && event.args[1] ? event.args[1] : undefined);
                     break;
@@ -64,18 +114,23 @@ export const createElection = async (req, res) => {
 
         if (!electionId) {
             console.log("Events not found in receipt, fetching latest election ID...");
-            electionId = (await electionFactoryContract.getElectionIdCounter()).toString();
-            const electionData = await electionFactoryContract.getElection(electionId);
-            contractAddress = electionData.electionAddress;
+            try {
+                electionId = (await electionFactoryContract.getElectionIdCounter()).toString();
+                const electionData = await electionFactoryContract.getElection(electionId);
+                contractAddress = electionData.electionAddress || contractAddress;
+            } catch (e) {
+                console.warn("Failed to fetch election data from factory:", e?.message || e);
+            }
         }
 
         console.log(`Election created - ID: ${electionId}, Address: ${contractAddress}`);
 
+        // determine creator for DB record
         const creatorWalletNormalized = (req?.user?.walletAddress || (wallet && wallet.address) || "").toLowerCase() || undefined;
 
         const election = await Election.create({
-            electionId: parseInt(electionId),
-            contractAddress: contractAddress.toLowerCase(),
+            electionId: electionId ? parseInt(electionId, 10) : undefined,
+            contractAddress: contractAddress ? String(contractAddress).toLowerCase() : undefined,
             name,
             description: description || "",
             creator: creatorWalletNormalized || "backend",
@@ -90,7 +145,7 @@ export const createElection = async (req, res) => {
             message: "Election created successfully",
             election: {
                 ...election.toObject(),
-                electionId: parseInt(electionId),
+                electionId: election.electionId,
                 contractAddress
             },
             transaction: {
@@ -104,13 +159,16 @@ export const createElection = async (req, res) => {
 
         // Provide clearer client errors for common revert/estimate failures
         if (err && err.code === "UNPREDICTABLE_GAS_LIMIT" && err.error && err.error.body) {
-            // try to extract revert reason if present
             try {
                 const body = JSON.parse(err.error.body);
                 const rpcErr = body?.error;
                 if (rpcErr?.message) return res.status(400).json({ message: rpcErr.message });
             } catch (parseErr) { /* ignore */ }
             return res.status(400).json({ message: "Transaction would revert (cannot estimate gas). Check provided times/params." });
+        }
+
+        if (err.code === 'MISSING_ARGUMENT') {
+            return res.status(400).json({ message: "Contract createElection expects different arguments. Check factory ABI." });
         }
 
         if (err.code === 'INSUFFICIENT_FUNDS') {
@@ -547,6 +605,8 @@ export const getMyElections = async (req, res) => {
 			createdAt: new Date(e.createdAt.toNumber() * 1000),
 			isActive: e.isActive
 		}));
+
+		console.log(`Found ${mapped.length} elections for manager ${managerAddr} on-chain.`);
 
 		return res.json({ source: "chain", count: mapped.length, elections: mapped });
 	} catch (err) {

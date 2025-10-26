@@ -20,7 +20,8 @@ export default function MyElections() {
 
     useEffect(() => {
         // fetch only when user is authenticated and has manager or super-admin role
-        if (isAuthenticated && (isManager || isSuperAdmin)) {
+        if (isAuthenticated && (isSuperAdmin || isManager)) {
+            console.log("Fetching my elections for user with roles - :", isSuperAdmin, "SuperAdmin:", isManager);
             dispatch(fetchMyElections());
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps

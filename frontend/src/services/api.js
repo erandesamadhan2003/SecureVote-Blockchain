@@ -1,36 +1,25 @@
 import axios from "axios";
 
-const BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:3000/api";
+const BASE = import.meta.env.VITE_API_URL ? import.meta.env.VITE_API_URL : "http://localhost:3000/api";
 
 const api = axios.create({
-    baseURL: BASE_URL,
-    timeout: 30000,
+    baseURL: BASE,
     headers: {
         "Content-Type": "application/json"
     }
 });
 
-// Request interceptor — add token and ensure JSON content-type
-api.interceptors.request.use(
-    (config) => {
-        try {
-            const token = localStorage.getItem("token");
-            if (token) {
-                config.headers = config.headers || {};
-                config.headers["Authorization"] = `Bearer ${token}`;
-            }
-            config.headers = config.headers || {};
-            if (!config.headers["Content-Type"]) {
-                config.headers["Content-Type"] = "application/json";
-            }
-        } catch (e) {
-            // ignore localStorage errors
-            console.error("Request interceptor error:", e);
-        }
-        return config;
-    },
-    (error) => Promise.reject(error)
-);
+// If a token exists in localStorage (set by authService), apply it to axios defaults so page reloads keep authenticated requests working
+try {
+    const token = localStorage.getItem("token");
+    if (token) {
+        api.defaults.headers.common["Authorization"] = `Bearer ${token}`;
+    }
+} catch (e) {
+    // ignore localStorage access errors in some environments
+    // eslint-disable-next-line no-console
+    console.warn("Unable to read token from localStorage:", e?.message || e);
+}
 
 // Response interceptor — return response.data and handle common errors
 api.interceptors.response.use(
@@ -57,7 +46,7 @@ api.interceptors.response.use(
                 /* ignore */
             }
             // Redirect to login page (adjust path if your app uses a different route)
-            window.location.href = "/login";
+            // window.location.href = "/";
             return Promise.reject(data || { message: "Unauthorized" });
         }
 

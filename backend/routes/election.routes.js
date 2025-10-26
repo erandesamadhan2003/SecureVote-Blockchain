@@ -24,6 +24,7 @@ import {
   getOngoingElections,
   getCompletedElections
 } from "../controllers/election.controller.js";
+import authMiddleware from "../middleware/auth.middleware.js";
 
 const router = express.Router();
 
@@ -34,7 +35,9 @@ router.get("/active", getActiveElections);
 router.get("/upcoming", getUpcomingElections);
 router.get("/ongoing", getOngoingElections);
 router.get("/completed", getCompletedElections);
-router.get("/my", getMyElections);
+
+// protect /my so req.user is available
+router.get("/my", authMiddleware, getMyElections);
 
 // keep dynamic id route after static GETs
 router.get("/:id", getElectionById);
