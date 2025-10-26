@@ -1,7 +1,7 @@
 import React, { useMemo, useRef, useState } from "react";
-import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip, Legend, BarChart, Bar, XAxis, YAxis, CartesianGrid } from "recharts";
 import Button from "../common/Button.jsx";
 import html2canvas from "html2canvas";
+import { Bar, BarChart, CartesianGrid, Cell, Legend, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 
 const COLORS = ["#0088FE", "#00C49F", "#FFBB28", "#FF8042", "#8884D8", "#A28BFF", "#FF6B6B", "#4DD0E1"];
 

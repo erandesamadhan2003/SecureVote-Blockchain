@@ -1,9 +1,9 @@
-// Remove all Node.js imports and replace with:
-import { RolesABI } from '../contracts/abis/Roles.json';
-import { ElectionFactoryABI } from '../contracts/abis/Roles.json';
-import { ElectionABI } from  '../contracts/abis/Roles.json';
+// Use default JSON imports and read .abi to avoid named-export errors
+import RolesJson from "../contracts/abis/Roles.json";
+import ElectionFactoryJson from "../contracts/abis/ElectionFactory.json";
+import ElectionJson from "../contracts/abis/Election.json";
 
-// Your existing environment variables and constants...
+// Addresses from env
 export const ROLES_CONTRACT_ADDRESS = import.meta.env.VITE_ROLES_CONTRACT || "";
 export const ELECTION_FACTORY_CONTRACT_ADDRESS = import.meta.env.VITE_FACTORY_CONTRACT || "";
 
@@ -58,5 +58,7 @@ export const SUCCESS = {
     TX_SUBMITTED: "Transaction submitted"
 };
 
-// Export the ABIs
-export { RolesABI as RoleABI, ElectionFactoryABI, ElectionABI };
+// ABI exports — prefer JSON's .abi, fallback to the root if formatted differently, otherwise empty array
+export const RoleABI = (RolesJson && (RolesJson.abi || RolesJson)) || [];
+export const ElectionFactoryABI = (ElectionFactoryJson && (ElectionFactoryJson.abi || ElectionFactoryJson)) || [];
+export const ElectionABI = (ElectionJson && (ElectionJson.abi || ElectionJson)) || [];

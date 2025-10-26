@@ -100,8 +100,16 @@ export const getElectionStatus = (election) => {
 	return "Unknown";
 };
 
+export const truncateText = (text, max = 140, suffix = "…") => {
+	if (text == null) return "";
+	const s = String(text);
+	if (s.length <= max) return s;
+	return s.slice(0, max).trim() + suffix;
+};
+
 export default {
 	truncateAddress,
+	truncateText,
 	formatDate,
 	formatTime,
 	calculateTimeRemaining,
