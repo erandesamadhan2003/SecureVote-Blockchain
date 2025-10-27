@@ -18,7 +18,7 @@ export const getCandidatesByElection = async (electionId, status) => {
     try {
         const query = buildQuery({ status });
         const res = await api.get(`/candidates/${electionId}${query}`);
-        return res;
+        return res?.data ?? res;
     } catch (err) {
         const msg = err?.message || (err?.data && err.data.message) || "Failed to load candidates";
         throw new Error(msg);
@@ -32,7 +32,7 @@ export const getPendingCandidates = async (electionId) => {
     if (!electionId) throw new Error("electionId is required");
     try {
         const res = await api.get(`/candidates/${electionId}/pending`);
-        return res;
+        return res?.data ?? res;
     } catch (err) {
         const msg = err?.message || (err?.data && err.data.message) || "Failed to load pending candidates";
         throw new Error(msg);
@@ -58,26 +58,32 @@ export const registerCandidate = async (data) => {
         if (data.candidatePrivateKey) payload.candidatePrivateKey = data.candidatePrivateKey;
 
         const res = await api.post(`/candidates/${data.electionId}/register`, payload);
-        return res;
+        return res?.data ?? res;
     } catch (err) {
-        const msg = err?.message || (err?.data && err.data.message) || "Candidate registration failed";
+        const msg = err?.response?.data?.message || err?.message || "Candidate registration failed";
         throw new Error(msg);
     }
 };
 
 /**
  * POST /api/candidates/:electionId/validate
- * Body: { candidateId, approve }
+ * Body: { candidateId, approve, walletAddress? }
+ *
+ * candidateId: may be numeric on-chain id OR walletAddress (string) or DB id.
+ * opts: { walletAddress }
  */
-export const validateCandidate = async (electionId, candidateId, approved) => {
+export const validateCandidate = async (electionId, candidateId, approved, opts = {}) => {
     if (!electionId) throw new Error("electionId is required");
     if (candidateId == null) throw new Error("candidateId is required");
     if (approved == null) throw new Error("approved (true/false) is required");
     try {
-        const res = await api.post(`/candidates/${electionId}/validate`, { candidateId, approve: !!approved });
-        return res;
+        const payload = { candidateId, approve: !!approved };
+        if (opts && opts.walletAddress) payload.walletAddress = opts.walletAddress;
+        const res = await api.post(`/candidates/${electionId}/validate`, payload);
+        return res?.data ?? res;
     } catch (err) {
-        const msg = err?.message || (err?.data && err.data.message) || "Candidate validation failed";
+        // prefer backend message when present
+        const msg = err?.response?.data?.message || err?.message || "Candidate validation failed";
         throw new Error(msg);
     }
 };
@@ -90,7 +96,7 @@ export const getCandidateDetails = async (electionId, candidateId) => {
     if (candidateId == null) throw new Error("candidateId is required");
     try {
         const res = await api.get(`/candidates/${electionId}/candidate/${candidateId}`);
-        return res;
+        return res?.data ?? res;
     } catch (err) {
         const msg = err?.message || (err?.data && err.data.message) || "Failed to fetch candidate details";
         throw new Error(msg);
@@ -104,7 +110,7 @@ export const getApprovedCandidates = async (electionId) => {
     if (!electionId) throw new Error("electionId is required");
     try {
         const res = await api.get(`/candidates/${electionId}/approved`);
-        return res;
+        return res?.data ?? res;
     } catch (err) {
         const msg = err?.message || (err?.data && err.data.message) || "Failed to load approved candidates";
         throw new Error(msg);

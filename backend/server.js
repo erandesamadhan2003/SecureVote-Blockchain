@@ -14,6 +14,28 @@ import adminRoutes from "./routes/admin.routes.js"; // <-- added
 import { provider, wallet, roleContract, electionFactoryContract } from "./utils/blockchain.js";
 import { ethers } from "ethers";
 
+// add multer + file helpers for uploads
+import multer from "multer";
+import fs from "fs";
+import path from "path";
+
+// ensure uploads dir exists
+const uploadsDir = path.join(process.cwd(), "uploads");
+try { fs.mkdirSync(uploadsDir, { recursive: true }); } catch (e) { /* ignore */ }
+
+// serve uploaded files
+
+// configure multer storage (store original extension)
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => cb(null, uploadsDir),
+  filename: (req, file, cb) => {
+    const ext = path.extname(file.originalname) || "";
+    const base = `${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+    cb(null, `${base}${ext}`);
+  }
+});
+const upload = multer({ storage });
+
 dotenv.config();
 
 const app = express();
@@ -45,9 +67,24 @@ app.use("/api/dashboard", dashboardRoutes);
 // mount admin routes
 app.use("/api/admin", adminRoutes);
 
+app.use("/uploads", express.static(uploadsDir));
 // Simple health route
 app.get("/", (req, res) => {
 	return res.json({ status: "ok", env: process.env.NODE_ENV || "development" });
+});
+
+// file upload endpoint
+app.post("/api/upload", upload.single("file"), (req, res) => {
+	try {
+    if (!req.file) return res.status(400).json({ message: "No file uploaded" });
+    const filename = req.file.filename;
+    const urlBase = process.env.API_BASE_URL ? process.env.API_BASE_URL.replace(/\/$/, "") : `http://localhost:${process.env.PORT || 3000}`;
+    const fileUrl = `${urlBase}/uploads/${encodeURIComponent(filename)}`;
+    return res.json({ hash: filename, url: fileUrl });
+  } catch (err) {
+    console.error("Upload error:", err);
+    return res.status(500).json({ message: "Upload failed" });
+  }
 });
 
 // New: verify blockchain connectivity and contracts

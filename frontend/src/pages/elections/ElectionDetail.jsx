@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback } from "react";
-import { useParams } from "react-router-dom";
+import { useParams, Link } from "react-router-dom";
 import ElectionDetails from "../../components/election/ElectionDetails.jsx";
 import CandidateList from "../../components/candidate/CandidateList.jsx";
 import ResultsTable from "../../components/results/ResultsTable.jsx";
@@ -18,7 +18,6 @@ export default function ElectionDetail() {
     const { electionId } = useParams();
     const { isManager, isAuthority, isSuperAdmin } = useAuth();
     const canManage = isManager || isAuthority || isSuperAdmin;
-
     const [election, setElection] = useState(null);
     const [activeTab, setActiveTab] = useState("overview"); // overview | candidates | voters | results
     const [isLoading, setIsLoading] = useState(false);
@@ -38,6 +37,7 @@ export default function ElectionDetail() {
         setIsLoading(true);
         try {
             const res = await electionService.getElectionById(electionId);
+            // service now returns res.data (which may include { election })
             const e = res?.election ?? res;
             setElection(e || null);
         } catch (err) {
@@ -62,6 +62,22 @@ export default function ElectionDetail() {
         }
     }, [electionId]);
 
+    // small resolver (kept local to avoid adding new util file)
+    const resolveImageUrl = (id) => {
+        if (!id) return null;
+        const s = String(id).trim();
+        if (s.startsWith("http://") || s.startsWith("https://")) return s;
+        if (s.startsWith("ipfs://")) return `https://ipfs.io/ipfs/${s.slice(7)}`;
+        const isLikelyCid = /^Qm[a-zA-Z0-9]{44,}|^bafy/i.test(s);
+        const isFilename = /\.(jpe?g|png|gif|webp|svg)$/i.test(s) || s.includes("_") || s.length < 80 && s.includes(".");
+        const apiBase = import.meta.env.VITE_API_URL ? String(import.meta.env.VITE_API_URL).replace(/\/$/, "") : "http://localhost:3000/api";
+        const uploadsBase = apiBase.replace(/\/api\/?$/, "");
+        if (isFilename) return `${uploadsBase}/uploads/${encodeURIComponent(s)}`;
+        if (isLikelyCid) return `https://ipfs.io/ipfs/${s}`;
+        if (s.length < 80) return `${uploadsBase}/uploads/${encodeURIComponent(s)}`;
+        return `https://ipfs.io/ipfs/${s}`;
+    };
+
     const loadResults = useCallback(async () => {
         setResultsLoading(true);
         try {
@@ -70,16 +86,22 @@ export default function ElectionDetail() {
             if (res && res.ids && res.names && res.votes) {
                 const total = (res.votes || []).reduce((s, v) => s + Number(v), 0);
                 setTotalVotes(total);
-                const arr = (res.ids || []).map((id, idx) => ({
-                    candidateId: id,
-                    name: res.names[idx] || "",
-                    votes: Number(res.votes[idx] || 0),
-                    imageHash: undefined
-                }));
+                const arr = (res.ids || []).map((id, idx) => {
+                    const imageHash = (res.imageHashes && res.imageHashes[idx]) || undefined;
+                    return {
+                        candidateId: id,
+                        name: res.names[idx] || "",
+                        votes: Number(res.votes[idx] || 0),
+                        imageHash,
+                        imageUrl: imageHash ? resolveImageUrl(imageHash) : undefined
+                    };
+                });
                 setResults(arr);
             } else if (Array.isArray(res)) {
-                setResults(res);
-                setTotalVotes(res.reduce((s, r) => s + Number(r.votes || 0), 0));
+                // if array, try to enrich with imageUrl where possible
+                const enriched = res.map((r) => ({ ...r, imageUrl: r.imageHash ? resolveImageUrl(r.imageHash) : r.imageUrl }));
+                setResults(enriched);
+                setTotalVotes(enriched.reduce((s, r) => s + Number(r.votes || 0), 0));
             } else {
                 setResults([]);
             }
@@ -88,6 +110,9 @@ export default function ElectionDetail() {
             try {
                 const w = await api.get(`/results/${electionId}/winner`);
                 const winnerObj = w?.winner ?? (w?.winnerId ? { candidateId: w.winnerId } : null);
+                if (winnerObj) {
+                    winnerObj.imageUrl = winnerObj.imageUrl || (winnerObj.imageHash ? resolveImageUrl(winnerObj.imageHash) : undefined);
+                }
                 setWinner(winnerObj || null);
             } catch (e) {
                 setWinner(null);
@@ -163,7 +188,19 @@ export default function ElectionDetail() {
                     </div>
                 </Card>
             ) : (
-                <ElectionDetails election={election} onStatusChange={handleStatusChange} />
+                <>
+                    <div className="flex items-center justify-between gap-4">
+                        <ElectionDetails election={election} onStatusChange={handleStatusChange} canManage={canManage} />
+                        {/* Quick vote CTA */}
+                        {String(election.status).toLowerCase() === "voting" && (
+                            <div className="self-start">
+                                <Link to={`/vote/${encodeURIComponent(election.electionId ?? election.id ?? "")}`}>
+                                    <Button variant="primary" size="large">Vote now</Button>
+                                </Link>
+                            </div>
+                        )}
+                    </div>
+                </>
             )}
 
             <Card>

@@ -1,46 +1,47 @@
 import React, { useMemo, useState } from "react";
 import Card from "../common/Card.jsx";
 import Button from "../common/Button.jsx";
-import ElectionTimeline from "./ElectionTimeline.jsx";
-import useAuth from "../../hooks/useAuth.js";
-import { formatDate, getElectionStatus } from "../../utils/helpers.js";
-import { Trophy, Users, List, BarChart } from "lucide-react";
+import { List, Users, BarChart } from "lucide-react";
+import { formatDate, formatNumber, getElectionStatus } from "../../utils/helpers.js";
 
 /**
  * Props:
- *  - election: object
- *  - onStatusChange: async function(newStatus) => Promise
+ * - election: object (may come from DB or on-chain)
+ * - onStatusChange: async function(targetStatus) => void
+ * - canManage: boolean (show manager controls)
  */
-export default function ElectionDetails({ election = {}, onStatusChange = async () => { } }) {
-    const { isManager, isAuthority, isSuperAdmin, wallet } = useAuth();
-    const [activeTab, setActiveTab] = useState("overview"); // overview | candidates | voters | results
-    const [isChangingStatus, setIsChangingStatus] = useState(false);
-    const creator = (election.creator || election.creatorAddress || election.creatorWallet) ?? null;
-    const currentUserAddress = wallet?.walletAddress ?? wallet?.walletAddress ?? null;
-    const isCreator = creator && currentUserAddress && String(creator).toLowerCase() === String(currentUserAddress).toLowerCase();
-    const canManage = isSuperAdmin || isManager || isAuthority || isCreator;
+export default function ElectionDetails({ election = {}, onStatusChange = async () => { }, canManage  }) {
+    // derive stable fields
+    const status = useMemo(() => {
+        // prefer explicit string status, else derive from times
+        if (!election) return "Unknown";
+        if (typeof election.status === "string" && election.status) return election.status;
+        // fallback to helper which uses times / deadline
+        return getElectionStatus(election);
+    }, [election]);
 
-    const totalCandidates = Number(election.totalCandidates ?? election.candidatesCount ?? 0);
-    const totalVoters = Number(election.totalVoters ?? election.registeredVoters ?? 0);
-    const totalVotes = Number(election.totalVotes ?? election.votes ?? 0);
-    const turnout = totalVoters > 0 ? `${((totalVotes / totalVoters) * 100).toFixed(2)}%` : "0.00%";
 
-    // prefer explicit status from backend; fallback to heuristic helper
-    const status = election.status || election._status || getElectionStatus(election) || "Created";
+    const creator = election.creator || election.createdBy || election.creatorAddress || null;
+    const totalCandidates = election.totalCandidates ?? election.candidatesCount ?? election.candidateIds?.length ?? 0;
+    const totalVoters = election.totalVoters ?? election.votersCount ?? election.totalVotersOnChain ?? 0;
+    const totalVotes = election.totalVotes ?? 0;
+    const turnout = totalVoters ? `${Math.round((Number(totalVotes) / Number(totalVoters || 1)) * 100)}%` : "—";
 
     const formattedDates = useMemo(() => ({
-        start: election.startTime ? formatDate(new Date(election.startTime)) : "TBD",
-        end: election.endTime ? formatDate(new Date(election.endTime)) : "TBD",
-        registrationDeadline: election.registrationDeadline ? formatDate(new Date(election.registrationDeadline)) : "TBD"
+        start: election.startTime ? formatDate(election.startTime) : "TBD",
+        end: election.endTime ? formatDate(election.endTime) : "TBD",
+        registrationDeadline: election.registrationDeadline ? formatDate(election.registrationDeadline) : "TBD"
     }), [election]);
 
-    const handleStatusChange = async (target) => {
-        if (typeof onStatusChange !== "function") return;
+    const [isChangingStatus, setIsChangingStatus] = useState(false);
+
+    const handleChange = async (target) => {
         try {
             setIsChangingStatus(true);
             await onStatusChange(target);
-        } catch (err) {
-            console.error("Status change failed:", err);
+        } catch (e) {
+            // caller will handle toasts; swallow here
+            console.error("status change failed:", e);
         } finally {
             setIsChangingStatus(false);
         }
@@ -74,7 +75,7 @@ export default function ElectionDetails({ election = {}, onStatusChange = async 
                                 <List className="w-6 h-6 text-gray-700" />
                                 <div>
                                     <div className="text-xs text-gray-500">Candidates</div>
-                                    <div className="font-medium">{totalCandidates}</div>
+                                    <div className="font-medium">{formatNumber(totalCandidates)}</div>
                                 </div>
                             </div>
 
@@ -82,7 +83,7 @@ export default function ElectionDetails({ election = {}, onStatusChange = async 
                                 <Users className="w-6 h-6 text-gray-700" />
                                 <div>
                                     <div className="text-xs text-gray-500">Registered Voters</div>
-                                    <div className="font-medium">{totalVoters}</div>
+                                    <div className="font-medium">{formatNumber(totalVoters)}</div>
                                 </div>
                             </div>
 
@@ -90,7 +91,7 @@ export default function ElectionDetails({ election = {}, onStatusChange = async 
                                 <BarChart className="w-6 h-6 text-gray-700" />
                                 <div>
                                     <div className="text-xs text-gray-500">Votes Cast</div>
-                                    <div className="font-medium">{totalVotes} <span className="text-xs text-gray-500">({turnout} turnout)</span></div>
+                                    <div className="font-medium">{formatNumber(totalVotes)} <span className="text-xs text-gray-500">({turnout} turnout)</span></div>
                                 </div>
                             </div>
                         </div>
@@ -115,50 +116,48 @@ export default function ElectionDetails({ election = {}, onStatusChange = async 
                         </div>
 
                         <div className="mt-4">
-                            <ElectionTimeline election={{
-                                createdAt: election.createdAt || election.createdAt,
-                                registrationDeadline: election.registrationDeadline,
-                                startTime: election.startTime,
-                                endTime: election.endTime
-                            }} />
+                            {/* timeline component may live here */}
+                            {/* ...existing code... */}
                         </div>
                     </Card>
 
                     <Card>
                         <div className="flex items-center gap-4 border-b pb-3 mb-3">
                             <nav className="flex gap-2">
-                                <button onClick={() => setActiveTab("overview")} className={`px-3 py-1 rounded text-sm ${activeTab === "overview" ? "bg-blue-100" : "hover:bg-gray-100"}`}>Overview</button>
-                                <button onClick={() => setActiveTab("candidates")} className={`px-3 py-1 rounded text-sm ${activeTab === "candidates" ? "bg-blue-100" : "hover:bg-gray-100"}`}>Candidates</button>
-                                {(canManage) && <button onClick={() => setActiveTab("voters")} className={`px-3 py-1 rounded text-sm ${activeTab === "voters" ? "bg-blue-100" : "hover:bg-gray-100"}`}>Voters</button>}
-                                {(status === "Ended" || status === "ResultDeclared") && <button onClick={() => setActiveTab("results")} className={`px-3 py-1 rounded text-sm ${activeTab === "results" ? "bg-blue-100" : "hover:bg-gray-100"}`}>Results</button>}
+                                <button className="px-3 py-1 rounded text-sm bg-blue-100">Overview</button>
+                                <button className="px-3 py-1 rounded text-sm hover:bg-gray-100">Candidates</button>
                             </nav>
 
-                            <div className="ml-auto text-xs text-gray-500">{/* placeholder for small info */}</div>
+                            <div className="ml-auto text-xs text-gray-500">Manage controls</div>
                         </div>
 
                         <div>
-                            {activeTab === "overview" && (
-                                <div className="prose text-sm">
-                                    <p>{election.longDescription || election.description || "No additional overview available."}</p>
-                                </div>
-                            )}
+                            {/* lifecycle manager controls */}
+                            {canManage && (
+                                <div className="space-y-2">
+                                    {status === "Created" && (
+                                        <Button variant="primary" size="medium" onClick={() => handleChange("Registration")} loading={isChangingStatus}>
+                                            Start Registration
+                                        </Button>
+                                    )}
 
-                            {activeTab === "candidates" && (
-                                <div>
-                                    {/* Expect parent to pass candidate list separately; show placeholder */}
-                                    <p className="text-sm text-gray-600">Candidates list will be shown here.</p>
-                                </div>
-                            )}
+                                    {status === "Registration" && (
+                                        <Button variant="primary" size="medium" onClick={() => handleChange("Voting")} loading={isChangingStatus}>
+                                            Start Voting
+                                        </Button>
+                                    )}
 
-                            {activeTab === "voters" && canManage && (
-                                <div>
-                                    <p className="text-sm text-gray-600">Voter management and registration details are available to managers/authorities.</p>
-                                </div>
-                            )}
+                                    {status === "Voting" && (
+                                        <Button variant="danger" size="medium" onClick={() => handleChange("Ended")} loading={isChangingStatus}>
+                                            End Election
+                                        </Button>
+                                    )}
 
-                            {activeTab === "results" && (status === "Ended" || status === "ResultDeclared") && (
-                                <div>
-                                    <p className="text-sm text-gray-600">Results and analytics are available here.</p>
+                                    {status === "Ended" && (
+                                        <Button variant="primary" size="medium" onClick={() => handleChange("ResultDeclared")} loading={isChangingStatus}>
+                                            Declare Results
+                                        </Button>
+                                    )}
                                 </div>
                             )}
                         </div>
@@ -174,37 +173,6 @@ export default function ElectionDetails({ election = {}, onStatusChange = async 
                             <div><strong>Created:</strong> {election.createdAt ? formatDate(new Date(election.createdAt)) : "—"}</div>
                         </div>
                     </Card>
-
-                    {canManage && (
-                        <Card>
-                            <h3 className="text-sm font-medium mb-3">Manager Controls</h3>
-                            <div className="space-y-2">
-                                {status === "Created" && (
-                                    <Button variant="primary" size="medium" onClick={() => handleStatusChange("Registration")} loading={isChangingStatus}>
-                                        Start Registration
-                                    </Button>
-                                )}
-
-                                {status === "Registration" && (
-                                    <Button variant="primary" size="medium" onClick={() => handleStatusChange("Voting")} loading={isChangingStatus}>
-                                        Start Voting
-                                    </Button>
-                                )}
-
-                                {status === "Voting" && (
-                                    <Button variant="danger" size="medium" onClick={() => handleStatusChange("Ended")} loading={isChangingStatus}>
-                                        End Election
-                                    </Button>
-                                )}
-
-                                {status === "Ended" && (
-                                    <Button variant="primary" size="medium" onClick={() => handleStatusChange("ResultDeclared")} loading={isChangingStatus}>
-                                        Declare Results
-                                    </Button>
-                                )}
-                            </div>
-                        </Card>
-                    )}
                 </aside>
             </div>
         </div>

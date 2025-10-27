@@ -69,12 +69,15 @@ export default function Navbar() {
                         <Link to="/elections" className="px-3 py-2 rounded-md text-sm font-medium hover:bg-white/40">
                             Elections
                         </Link>
-                        {isAuthenticated && <Link to="/my-elections" className="px-3 py-2 rounded-md text-sm font-medium hover:bg-white/40">My Elections</Link>}
+                        {(isAuthenticated && (isManager || isSuperAdmin)) && <Link to="/my-elections" className="px-3 py-2 rounded-md text-sm font-medium hover:bg-white/40">My Elections</Link>}
                         {(isManager || isSuperAdmin) && (
                             <Link to="/elections/create" className="px-3 py-2 rounded-md text-sm font-medium hover:bg-white/40">Create Election</Link>
                         )}
                         {(isManager || isAuthority || isSuperAdmin) && (
                             <Link to="/candidates/manage" className="px-3 py-2 rounded-md text-sm font-medium hover:bg-white/40">Manage Candidates</Link>
+                        )}
+                        {isVoter && (
+                            <Link to="/candidates/register" className="px-3 py-2 rounded-md text-sm font-medium hover:bg-white/40">Register as Candidate</Link>
                         )}
                         {isAuthority && (
                             <Link to="/voters/register" className="px-3 py-2 rounded-md text-sm font-medium hover:bg-white/40">Register Voters</Link>
@@ -144,9 +147,10 @@ export default function Navbar() {
                 <div className="md:hidden border-t" style={{ background: theme.oldLace }}>
                     <div className="px-4 py-3 space-y-2">
                         <Link to="/elections" className="block px-2 py-2 rounded-md">Elections</Link>
-                        {isAuthenticated && <Link to="/my-elections" className="block px-2 py-2 rounded-md">My Elections</Link>}
+                        {(isAuthenticated && (isManager || isSuperAdmin)) && <Link to="/my-elections" className="block px-2 py-2 rounded-md">My Elections</Link>}
                         {(isManager || isSuperAdmin) && <Link to="/elections/create" className="block px-2 py-2 rounded-md">Create Election</Link>}
                         {(isManager || isAuthority || isSuperAdmin) && <Link to="/candidates/manage" className="block px-2 py-2 rounded-md">Manage Candidates</Link>}
+                        {isVoter && <Link to="/candidates/register" className="block px-2 py-2 rounded-md">Register as Candidate</Link>}
                         {isAuthority && <Link to="/voters/register" className="block px-2 py-2 rounded-md">Register Voters</Link>}
                         <Link to="/elections" className="block px-2 py-2 rounded-md">Results</Link>
                         {isSuperAdmin && <Link to="/admin/dashboard" className="block px-2 py-2 rounded-md">Admin</Link>}

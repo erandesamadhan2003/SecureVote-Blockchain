@@ -44,6 +44,22 @@ export default function CandidateList({ candidates = [], mode = "view", isLoadin
   const handleApprove = (candidate) => onCandidateAction({ type: "approve", candidate });
   const handleReject = (candidate) => onCandidateAction({ type: "reject", candidate });
 
+  // small helper (duplicate of CandidateCard resolver) — computes usable image URL
+  const resolveImageUrl = (id) => {
+    if (!id) return null;
+    const s = String(id).trim();
+    if (s.startsWith("http://") || s.startsWith("https://")) return s;
+    if (s.startsWith("ipfs://")) return `https://ipfs.io/ipfs/${s.slice(7)}`;
+    const isLikelyCid = /^Qm[a-zA-Z0-9]{44,}|^bafy/i.test(s);
+    const isFilename = /\.(jpe?g|png|gif|webp|svg)$/i.test(s) || s.includes("_") || s.length < 80 && s.includes(".");
+    const apiBase = import.meta.env.VITE_API_URL ? String(import.meta.env.VITE_API_URL).replace(/\/$/, "") : "http://localhost:3000/api";
+    const uploadsBase = apiBase.replace(/\/api\/?$/, "");
+    if (isFilename) return `${uploadsBase}/uploads/${encodeURIComponent(s)}`;
+    if (isLikelyCid) return `https://ipfs.io/ipfs/${s}`;
+    if (s.length < 80) return `${uploadsBase}/uploads/${encodeURIComponent(s)}`;
+    return `https://ipfs.io/ipfs/${s}`;
+  };
+
   if (isLoading) {
     return (
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
@@ -93,17 +109,22 @@ export default function CandidateList({ candidates = [], mode = "view", isLoadin
         <div className="p-6 bg-white rounded shadow text-center text-gray-600">No candidates found.</div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-          {filteredCandidates.map((c) => (
-            <CandidateCard
-              key={c.candidateId ?? c.id ?? c._id}
-              candidate={c}
-              mode={mode}
-              isSelected={String(selectedId) === String(c.candidateId ?? c.id ?? c._id)}
-              onSelect={onSelect}
-              onApprove={() => handleApprove(c)}
-              onReject={() => handleReject(c)}
-            />
-          ))}
+          {filteredCandidates.map((c) => {
+            const img = c.imageUrl || c.imageHash || c.image;
+            const resolved = img ? resolveImageUrl(img) : null;
+            return (
+              <CandidateCard
+                key={c.candidateId ?? c.id ?? c._id}
+                candidate={c}
+                imageUrl={resolved}
+                mode={mode}
+                isSelected={String(selectedId) === String(c.candidateId ?? c.id ?? c._id)}
+                onSelect={onSelect}
+                onApprove={() => handleApprove(c)}
+                onReject={() => handleReject(c)}
+              />
+            );
+          })}
         </div>
       )}
     </div>

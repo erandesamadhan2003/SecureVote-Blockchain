@@ -37,6 +37,7 @@ export const registerCandidate = async (req, res) => {
 	try {
 		const { id } = req.params;
 		const { name, party, manifesto, imageHash, candidatePrivateKey, walletAddress } = req.body;
+		console.log("Register candidate request:", { id, name, party, manifesto, imageHash, walletAddress });
 		if (!id || !name || !party) return res.status(400).json({ message: "id, name and party are required" });
 
 		// signer: if candidatePrivateKey provided, sign as candidate; otherwise use backend wallet
@@ -50,42 +51,123 @@ export const registerCandidate = async (req, res) => {
 		}
 
 		const contract = await loadElectionContractForId(id, signer);
-		const tx = await contract.registerCandidate(name, party, manifesto || "", imageHash || "");
-		const receipt = await tx.wait();
 
-		// store DB record (best-effort). If walletAddress provided use it; else if signer is Wallet use its address.
-		const candidateWallet = walletAddress ? walletAddress.toLowerCase() : (signer.address ? signer.address.toLowerCase() : undefined);
-		let electionIdNum;
-		// try to resolve electionId from id param or factory
-		if (/^0x/i.test(String(id))) {
-			// find in DB by contractAddress
-			const db = await Election.findOne({ contractAddress: id.toLowerCase() }).lean();
-			electionIdNum = db ? db.electionId : undefined;
-		} else {
-			electionIdNum = parseInt(id, 10);
+		// Check on-chain election status before attempting to send a tx.
+		// Accept registration when:
+		//  - status === Registration (enum value 1), OR
+		//  - registrationDeadline (on-chain) is in the future (block timestamp <= registrationDeadline).
+		// This allows registration while the contract hasn't had its status transitioned but the deadline still permits registration.
+		try {
+			const info = await contract.getElectionInfo();
+			// info may be struct or array; prefer named field
+			const rawStatus = info?.status ?? info[5];
+			const statusNum = typeof rawStatus === "object" && typeof rawStatus.toNumber === "function"
+				? rawStatus.toNumber()
+				: (typeof rawStatus === "string" ? Number(rawStatus) : rawStatus);
+
+			if (statusNum == null) {
+				// unknown status — try to fall back to registrationDeadline check below
+			}
+
+			let registrationAllowed = false;
+			// Registration enum value expected to be 1 per contract
+			if (Number(statusNum) === 1) {
+				registrationAllowed = true;
+			} else {
+				// try registrationDeadline fallback
+				const regDeadlineBN = info?.registrationDeadline ?? info?.registrationDeadline ?? info[4];
+				if (regDeadlineBN) {
+					const regDeadline = regDeadlineBN.toNumber ? regDeadlineBN.toNumber() : Number(regDeadlineBN);
+					// read latest block timestamp for current chain time
+					try {
+						const latest = await provider.getBlock("latest");
+						const nowTs = latest?.timestamp ?? Math.floor(Date.now() / 1000);
+						if (regDeadline && nowTs <= regDeadline) {
+							registrationAllowed = true;
+						}
+					} catch (blkErr) {
+						// If we cannot get block timestamp, log and fall back to disallow (safer)
+						console.warn("Failed to read latest block for registration deadline check:", blkErr?.message || blkErr);
+					}
+				}
+			}
+
+			if (!registrationAllowed) {
+				return res.status(400).json({ message: "Election is not in registration phase; cannot register candidate now" });
+			}
+		} catch (e) {
+			// If getElectionInfo fails, log and continue — we'll still attempt registration but provide clearer errors if it reverts.
+			console.warn("getElectionInfo check failed (continuing):", e?.message || e);
 		}
 
-		const candDoc = await Candidate.create({
-			candidateId: undefined, // on-chain id may be assigned later; keep undefined if unknown
-			electionId: electionIdNum,
-			electionAddress: ( /^0x/i.test(String(id)) ? id.toLowerCase() : undefined ),
-			walletAddress: candidateWallet,
-			name,
-			party,
-			manifesto,
-			imageHash,
-			status: "Pending",
-			voteCount: 0
-		}).catch(() => null); // ignore DB failure
+		let tx;
+		try {
+			tx = await contract.registerCandidate(name, party, manifesto || "", imageHash || "");
+			const receipt = await tx.wait();
+			
+			// attempt to read assigned on-chain candidate id (if contract exposes counter)
+			let candidateId;
+			try {
+				const counter = await contract.getCandidateIdCounter();
+				candidateId = counter?.toString ? counter.toString() : counter;
+			} catch (e) {
+				candidateId = undefined;
+			}
 
-		return res.status(201).json({
-			message: "Candidate registration transaction submitted",
-			txHash: tx.hash,
-			blockNumber: receipt.blockNumber,
-			candidate: candDoc ? { id: candDoc._id, walletAddress: candDoc.walletAddress, name: candDoc.name } : null
-		});
+			// store DB record (best-effort). If walletAddress provided use it; else if signer is Wallet use its address.
+			const candidateWallet = walletAddress ? walletAddress.toLowerCase() : (signer.address ? signer.address.toLowerCase() : undefined);
+			let electionIdNum;
+			// try to resolve electionId from id param or factory
+			if (/^0x/i.test(String(id))) {
+				// find in DB by contractAddress
+				const db = await Election.findOne({ contractAddress: id.toLowerCase() }).lean();
+				electionIdNum = db ? db.electionId : undefined;
+			} else {
+				electionIdNum = parseInt(id, 10);
+			}
+
+			const candDoc = await Candidate.create({
+				candidateId: candidateId ?? undefined,
+				electionId: electionIdNum,
+				electionAddress: ( /^0x/i.test(String(id)) ? id.toLowerCase() : undefined ),
+				walletAddress: candidateWallet,
+				name,
+				party,
+				manifesto,
+				imageHash,
+				status: "Pending",
+				voteCount: 0
+			}).catch(() => null); // ignore DB failure
+
+			return res.status(201).json({
+				message: "Candidate registration transaction submitted",
+				txHash: tx.hash,
+				blockNumber: receipt.blockNumber,
+				candidate: candDoc ? { id: candDoc._id, walletAddress: candDoc.walletAddress, name: candDoc.name, candidateId: candDoc.candidateId } : null,
+				onChainCandidateId: candidateId
+			});
+		} catch (err) {
+			console.error("registerCandidate error:", err);
+
+			// Try to parse revert reason / estimate error and return a clear client-visible message
+			if (err && (err.code === "UNPREDICTABLE_GAS_LIMIT" || err.code === "CALL_EXCEPTION")) {
+				// Infura style nested body
+				if (err?.error?.body) {
+					try {
+						const body = JSON.parse(err.error.body);
+						const rpcErr = body?.error;
+						if (rpcErr?.message) return res.status(400).json({ message: rpcErr.message });
+					} catch (parseErr) { /* ignore */ }
+				}
+				if (err?.error?.message) return res.status(400).json({ message: err.error.message });
+				return res.status(400).json({ message: err?.reason || "Contract call would revert (check election status / inputs)" });
+			}
+
+			// other errors
+			return res.status(500).json({ message: err?.reason || err?.message || "Server error" });
+		}
 	} catch (err) {
-		console.error("registerCandidate error:", err);
+		console.error("registerCandidate error (outer):", err);
 		return res.status(500).json({ message: err?.reason || err?.message || "Server error" });
 	}
 };

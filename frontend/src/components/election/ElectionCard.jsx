@@ -110,6 +110,13 @@ export default function ElectionCard({ election = {}, showManageButton = false }
                         <Button variant="primary" size="small">View Details</Button>
                     </Link>
 
+                    {/* Vote shortcut when election is in Voting status */}
+                    {(String(status).toLowerCase() === "voting") && (
+                        <Link to={`/vote/${encodeURIComponent(id)}`}>
+                            <Button variant="primary" size="small">Vote</Button>
+                        </Link>
+                    )}
+
                     {showManageButton && (
                         <Link to={`/candidates/manage?electionId=${encodeURIComponent(id)}`}>
                             <Button variant="outline" size="small">Manage</Button>

@@ -23,6 +23,15 @@ export const ElectionStatus = {
     ResultDeclared: "ResultDeclared"
 };
 
+// numeric -> string map to decode on-chain enum values (index => name)
+export const ElectionStatusMap = {
+    0: ElectionStatus.Created,
+    1: ElectionStatus.Registration,
+    2: ElectionStatus.Voting,
+    3: ElectionStatus.Ended,
+    4: ElectionStatus.ResultDeclared
+};
+
 export const CandidateStatus = {
     Pending: "Pending",
     Approved: "Approved",
@@ -62,3 +71,10 @@ export const SUCCESS = {
 export const RoleABI = (RolesJson && (RolesJson.abi || RolesJson)) || [];
 export const ElectionFactoryABI = (ElectionFactoryJson && (ElectionFactoryJson.abi || ElectionFactoryJson)) || [];
 export const ElectionABI = (ElectionJson && (ElectionJson.abi || ElectionJson)) || [];
+
+export default {
+    RoleABI,
+    ElectionFactoryABI,
+    ElectionABI,
+    ElectionStatusMap
+};
