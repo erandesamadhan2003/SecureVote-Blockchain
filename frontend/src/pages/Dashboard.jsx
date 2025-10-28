@@ -5,9 +5,11 @@ import ElectionList from "../components/election/ElectionList.jsx";
 import useAuth from "../hooks/useAuth.js";
 import electionService from "../services/electionService.js";
 import api from "../services/api.js";
+import useToast from "../hooks/useToast.js";
 
 export default function Dashboard() {
     const { user, isAuthenticated, isManager, isAuthority, isSuperAdmin, isVoter } = useAuth();
+    const { showSuccess, showError } = useToast();
     const [loading, setLoading] = useState(true);
     const [stats, setStats] = useState({
         electionsAvailable: "—",
@@ -100,6 +102,45 @@ export default function Dashboard() {
         ...(isSuperAdmin ? [{ label: "Manage Users", to: "/admin/users" }, { label: "System Settings", to: "/admin" }] : [])
     ];
 
+    // add election authority handler (manager-only)
+    const handleAddElectionAuthority = async () => {
+        try {
+            const account = (window.prompt("Enter the wallet address to grant ELECTION_AUTHORITY:") || "").trim();
+            if (!account) return;
+            if (!/^0x[a-fA-F0-9]{40}$/.test(account)) {
+                showError("Invalid Ethereum address");
+                return;
+            }
+            // confirm action
+            if (!window.confirm(`Grant ELECTION_AUTHORITY to ${account}?`)) return;
+
+            const res = await api.post("/roles/election-authority", { account });
+            showSuccess(res?.message || "Election authority added");
+        } catch (err) {
+            showError(err?.response?.data?.message || err?.message || "Failed to add election authority");
+            console.error("addElectionAuthority error:", err);
+        }
+    };
+
+    // add election manager handler (super-admin only)
+    const handleAddElectionManager = async () => {
+        try {
+            const account = (window.prompt("Enter the wallet address to grant ELECTION_MANAGER:") || "").trim();
+            if (!account) return;
+            if (!/^0x[a-fA-F0-9]{40}$/.test(account)) {
+                showError("Invalid Ethereum address");
+                return;
+            }
+            if (!window.confirm(`Grant ELECTION_MANAGER to ${account}?`)) return;
+
+            const res = await api.post("/roles/election-manager", { account });
+            showSuccess(res?.message || "Election manager added");
+        } catch (err) {
+            showError(err?.response?.data?.message || err?.message || "Failed to add election manager");
+            console.error("addElectionManager error:", err);
+        }
+    };
+
     return (
         <div className="max-w-7xl mx-auto px-4 py-8 space-y-6">
             <div className="flex items-center justify-between">
@@ -176,7 +217,7 @@ export default function Dashboard() {
 
                 <aside className="space-y-4">
                     <Card>
-                        <h3 className="text-sm font-medium">Quick Stats</h3>
+                        <h3 className="text-sm font-medium">Quick Info</h3>
                         <div className="mt-3 grid grid-cols-1 gap-3">
                             <div className="flex items-center justify-between">
                                 <div className="text-xs text-gray-500">Pending Approvals</div>
@@ -204,6 +245,9 @@ export default function Dashboard() {
                         <div className="mt-3 flex flex-col gap-2">
                             {isVoter && <Button variant="primary" size="small" onClick={() => (window.location.href = "/elections")}>Browse Elections</Button>}
                             {isManager && <Button variant="primary" size="small" onClick={() => (window.location.href = "/create")}>Create Election</Button>}
+                            {isManager && <Button variant="outline" size="small" onClick={handleAddElectionAuthority}>Add Election Authority</Button>}
+                            {/* Super admin-only action to add election manager */}
+                            {isSuperAdmin && <Button variant="outline" size="small" onClick={handleAddElectionManager}>Add Election Manager</Button>}
                             {isAuthority && <Button variant="primary" size="small" onClick={() => (window.location.href = "/register-voters")}>Register Voters</Button>}
                             {isSuperAdmin && <Button variant="outline" size="small" onClick={() => (window.location.href = "/admin")}>Admin Panel</Button>}
                         </div>

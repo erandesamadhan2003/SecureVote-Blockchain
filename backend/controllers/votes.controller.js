@@ -124,7 +124,7 @@ export const registerVoter = async (req, res) => {
 				user.isVerified = true;
 				await user.save();
 			}
-
+			console.log(`Voter ${voterAddress} registered for election ${electionId}`);
 			return res.json({ message: "Voter registered on-chain", txHash: tx.hash, blockNumber: receipt.blockNumber });
 		} catch (err) {
 			console.error("registerVoter error:", err);
