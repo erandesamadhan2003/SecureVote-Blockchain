@@ -1,9 +1,9 @@
 import User from "../models/User.js";
 
 /**
- * GET /api/admin/users
+ * GET /api/admin/users 
  * Query: page, limit, q, role, verified, sortBy, sortOrder
- */
+ */   
 export const getUsers = async (req, res) => {
 	 try {
 		 const page = Math.max(1, parseInt(req.query.page || "1", 10));

@@ -18,6 +18,9 @@ export default function Navbar() {
 
     const { user, walletAddress, isAuthenticated, wallet, isManager, isAuthority, isSuperAdmin, isVoter } = useAuth();
 
+    // build my-votes URL for the connected wallet (if present)
+    const myVotesUrl = `/my-votes${walletAddress ? `?address=${encodeURIComponent(walletAddress)}` : ""}`;
+
     const chainId = wallet?.chainId ?? null;
 
     // Theme colors
@@ -63,13 +66,21 @@ export default function Navbar() {
                             </div>
                         </Link>
                     </div>
-
+            
                     {/* Center: Nav links (desktop) */}
                     <nav className="hidden md:flex space-x-4">
                         <Link to="/elections" className="px-3 py-2 rounded-md text-sm font-medium hover:bg-white/40">
                             Elections
                         </Link>
-                        {(isAuthenticated && (isManager || isSuperAdmin)) && <Link to="/my-elections" className="px-3 py-2 rounded-md text-sm font-medium hover:bg-white/40">My Elections</Link>}
+
+                        {/* show My Votes only to voters */}
+                        {isVoter && (
+                            <Link to={myVotesUrl} className="px-3 py-2 rounded-md text-sm font-medium hover:bg-white/40">
+                                My Votes
+                            </Link>
+                        )}
+
+                        {(isAuthenticated && isSuperAdmin) && <Link to="/my-elections" className="px-3 py-2 rounded-md text-sm font-medium hover:bg-white/40">My Elections</Link>}
                         {(isManager || isSuperAdmin) && (
                             <Link to="/elections/create" className="px-3 py-2 rounded-md text-sm font-medium hover:bg-white/40">Create Election</Link>
                         )}
@@ -78,9 +89,6 @@ export default function Navbar() {
                         )}
                         {isVoter && (
                             <Link to="/candidates/register" className="px-3 py-2 rounded-md text-sm font-medium hover:bg-white/40">Register as Candidate</Link>
-                        )}
-                        {isAuthority && (
-                            <Link to="/voters/register" className="px-3 py-2 rounded-md text-sm font-medium hover:bg-white/40">Register Voters</Link>
                         )}
                         {isSuperAdmin && (
                             <Link to="/admin/dashboard" className="px-3 py-2 rounded-md text-sm font-medium hover:bg-white/40">Admin</Link>
@@ -147,11 +155,17 @@ export default function Navbar() {
                 <div className="md:hidden border-t" style={{ background: theme.oldLace }}>
                     <div className="px-4 py-3 space-y-2">
                         <Link to="/elections" className="block px-2 py-2 rounded-md">Elections</Link>
+
+                        {/* mobile: My Votes for voters */}
+                        {isVoter && (
+                            <Link to={myVotesUrl} className="block px-2 py-2 rounded-md">My Votes</Link>
+                        )}
+
                         {(isAuthenticated && (isManager || isSuperAdmin)) && <Link to="/my-elections" className="block px-2 py-2 rounded-md">My Elections</Link>}
                         {(isManager || isSuperAdmin) && <Link to="/elections/create" className="block px-2 py-2 rounded-md">Create Election</Link>}
                         {(isManager || isAuthority || isSuperAdmin) && <Link to="/candidates/manage" className="block px-2 py-2 rounded-md">Manage Candidates</Link>}
                         {isVoter && <Link to="/candidates/register" className="block px-2 py-2 rounded-md">Register as Candidate</Link>}
-                        {isAuthority && <Link to="/voters/register" className="block px-2 py-2 rounded-md">Register Voters</Link>}
+                        {(isAuthority || isManager) && <Link to="/voters/register" className="block px-2 py-2 rounded-md">Register Voters</Link>}
                         <Link to="/elections" className="block px-2 py-2 rounded-md">Results</Link>
                         {isSuperAdmin && <Link to="/admin/dashboard" className="block px-2 py-2 rounded-md">Admin</Link>}
                         <div className="pt-2 border-t">

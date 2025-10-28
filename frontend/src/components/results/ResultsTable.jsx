@@ -10,7 +10,7 @@ import { formatNumber } from "../../utils/helpers.js";
  * - totalVotes: number (optional)
  * - onExportCSV: function(results) optional
  */
-export default function ResultsTable({ results = [], totalVoters = 0, totalVotes = 0, onExportCSV }) {
+export default function     ResultsTable({ results = [], totalVoters = 0, totalVotes = 0, onExportCSV }) {
     const [sortBy, setSortBy] = useState("votes");
     const [sortOrder, setSortOrder] = useState("desc");
 

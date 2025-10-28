@@ -28,7 +28,8 @@ export default function VoterRegistration({ electionId, onRegisterComplete = () 
         setIsRegistering(true);
         try {
             // parent or service should call API to register voter
-            await onRegisterComplete([singleAddress]);
+            // pass a progress callback so parent can update UI if it wants
+            await onRegisterComplete([singleAddress], (done) => setProgress({ done, total: 1 }));
             showSuccess("Voter registered");
             setSingleAddress("");
         } catch (e) {

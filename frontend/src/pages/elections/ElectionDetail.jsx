@@ -13,6 +13,8 @@ import electionService from "../../services/electionService.js";
 import candidateService from "../../services/candidateService.js";
 import voteService from "../../services/voteService.js";
 import api from "../../services/api.js";
+import VoterRegistration from "../../components/voting/VoterRegistration.jsx";
+import useToast from "../../hooks/useToast.js";
 
 export default function ElectionDetail() {
     const { electionId } = useParams();
@@ -33,6 +35,47 @@ export default function ElectionDetail() {
     const [winner, setWinner] = useState(null);
     const [totalVotes, setTotalVotes] = useState(0);
 
+    const { showSuccess, showError } = useToast();
+
+    // show register modal state and progress
+    const [showRegisterModal, setShowRegisterModal] = useState(false);
+    const [registerProgress, setRegisterProgress] = useState({ done: 0, total: 0 });
+
+    // only managers or authorities may register voters (per request)
+    const canRegister = isManager || isAuthority;
+
+    // registration handler used by VoterRegistration component
+    const handleRegisterComplete = async (voters, progressCb) => {
+        if (!Array.isArray(voters) || voters.length === 0) throw new Error("No voters provided");
+        setRegisterProgress({ done: 0, total: voters.length });
+
+        // wrap child's progressCb so both child and this page get updates
+        const wrappedProgressCb = (done) => {
+            try {
+                if (typeof progressCb === "function") progressCb(done);
+            } catch (e) { /* ignore child cb errors */ }
+            setRegisterProgress((p) => ({ ...p, done }));
+        };
+
+        try {
+            if (voters.length === 1) {
+                await voteService.registerVoter(electionId, voters[0]);
+                wrappedProgressCb(1);
+            } else {
+                // call batch endpoint; we set done to total once finished
+                await voteService.registerVotersBatch(electionId, voters);
+                wrappedProgressCb(voters.length);
+            }
+            showSuccess(`Registered ${voters.length} voter(s)`);
+            setShowRegisterModal(false);
+        } catch (err) {
+            showError(err?.message || "Registration failed");
+            throw err;
+        } finally {
+            setRegisterProgress({ done: 0, total: 0 });
+        }
+    };
+
     const loadElection = useCallback(async () => {
         setIsLoading(true);
         try {
@@ -52,8 +95,16 @@ export default function ElectionDetail() {
         setCandidatesLoading(true);
         try {
             const res = await candidateService.getCandidatesByElection(electionId);
-            const list = res?.candidates ?? res?.candidates ?? res ?? [];
-            setCandidates(Array.isArray(list) ? list : (list?.candidates ?? []));
+            const list = res?.candidates ?? (Array.isArray(res) ? res : (res?.candidates ?? []));
+            const arr = Array.isArray(list) ? list : [];
+            setCandidates(arr);
+            // attach totalCandidates to election object so overview displays correct count
+            setElection((prev) => {
+                if (!prev) return prev;
+                // only update if different to avoid unnecessary renders
+                if ((prev.totalCandidates ?? 0) === arr.length) return prev;
+                return { ...prev, totalCandidates: arr.length };
+            });
         } catch (err) {
             console.error("Failed to load candidates:", err);
             setCandidates([]);
@@ -149,7 +200,9 @@ export default function ElectionDetail() {
 
     useEffect(() => {
         loadElection();
-    }, [loadElection]);
+        // also load candidates immediately so overview shows counts/timeline info without switching tabs
+        loadCandidates();
+    }, [loadElection, loadCandidates]);
 
     useEffect(() => {
         if (activeTab === "candidates") loadCandidates();
@@ -191,14 +244,25 @@ export default function ElectionDetail() {
                 <>
                     <div className="flex items-center justify-between gap-4">
                         <ElectionDetails election={election} onStatusChange={handleStatusChange} canManage={canManage} />
-                        {/* Quick vote CTA */}
-                        {String(election.status).toLowerCase() === "voting" && (
-                            <div className="self-start">
-                                <Link to={`/vote/${encodeURIComponent(election.electionId ?? election.id ?? "")}`}>
-                                    <Button variant="primary" size="large">Vote now</Button>
-                                </Link>
-                            </div>
-                        )}
+
+                        <div className="self-start space-y-2">
+                            {String(election.status).toLowerCase() === "voting" && (
+                                <div className="mb-2">
+                                    <Link to={`/vote/${encodeURIComponent(election.electionId ?? election.id ?? "")}`}>
+                                        <Button variant="primary" size="large">Vote now</Button>
+                                    </Link>
+                                </div>
+                            )}
+
+                            {/* Manager/Authority-only register button */}
+                            {canRegister && (
+                                <div>
+                                    <Button variant="outline" size="medium" onClick={() => setShowRegisterModal(true)}>
+                                        Register Voter
+                                    </Button>
+                                </div>
+                            )}
+                        </div>
                     </div>
                 </>
             )}
@@ -256,7 +320,8 @@ export default function ElectionDetail() {
                                         </div>
                                     )}
                                     <div className="mt-3">
-                                        <Button variant="primary" size="small" onClick={() => setActiveTab("voters")}>Register Voter</Button>
+                                        {/* open same register modal */}
+                                        <Button variant="primary" size="small" onClick={() => setShowRegisterModal(true)}>Register Voter</Button>
                                     </div>
                                 </>
                             )}
@@ -288,6 +353,35 @@ export default function ElectionDetail() {
                     )}
                 </div>
             </Card>
+
+            {/* Inline modal / panel for registration */}
+            {showRegisterModal && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+                    <div className="bg-white rounded shadow max-w-2xl w-full p-4 relative">
+                        <div className="flex items-center justify-between mb-3">
+                            <h3 className="text-lg font-medium">Register Voter — Election {election?.electionId ?? election?.id ?? ""}</h3>
+                            <button
+                                aria-label="Close"
+                                className="text-gray-500 hover:text-gray-800"
+                                onClick={() => setShowRegisterModal(false)}
+                            >
+                                Close
+                            </button>
+                        </div>
+
+                        <div className="space-y-4">
+                            <VoterRegistration
+                                electionId={electionId}
+                                onRegisterComplete={handleRegisterComplete}
+                            />
+
+                            {registerProgress.total > 0 && (
+                                <div className="text-sm text-gray-600 mt-3">Progress: {registerProgress.done}/{registerProgress.total}</div>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

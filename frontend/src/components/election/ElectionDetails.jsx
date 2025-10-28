@@ -27,11 +27,31 @@ export default function ElectionDetails({ election = {}, onStatusChange = async 
     const totalVotes = election.totalVotes ?? 0;
     const turnout = totalVoters ? `${Math.round((Number(totalVotes) / Number(totalVoters || 1)) * 100)}%` : "—";
 
-    const formattedDates = useMemo(() => ({
-        start: election.startTime ? formatDate(election.startTime) : "TBD",
-        end: election.endTime ? formatDate(election.endTime) : "TBD",
-        registrationDeadline: election.registrationDeadline ? formatDate(election.registrationDeadline) : "TBD"
-    }), [election]);
+    // Helper: accept Date, ISO string, or numeric (seconds or ms) and return Date or null
+    const parseToDate = (v) => {
+        if (!v) return null;
+        if (v instanceof Date) return v;
+        // numeric value (seconds or milliseconds)
+        const n = Number(v);
+        if (!Number.isNaN(n)) {
+            // if looks like ms (> 1e12) use directly, else treat as seconds
+            return n > 1e12 ? new Date(n) : new Date(n * 1000);
+        }
+        // try ISO/parsing
+        const d = new Date(v);
+        return Number.isNaN(d.getTime()) ? null : d;
+    };
+
+    const formattedDates = useMemo(() => {
+        const startDate = parseToDate(election.startTime);
+        const endDate = parseToDate(election.endTime);
+        const regDate = parseToDate(election.registrationDeadline);
+        return {
+            start: startDate ? formatDate(startDate) : "TBD",
+            end: endDate ? formatDate(endDate) : "TBD",
+            registrationDeadline: regDate ? formatDate(regDate) : "TBD"
+        };
+    }, [election]);
 
     const [isChangingStatus, setIsChangingStatus] = useState(false);
 

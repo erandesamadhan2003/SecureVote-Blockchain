@@ -1,5 +1,6 @@
 import Election from "../models/Election.js";
 import User from "../models/User.js";
+import Candidate from "../models/Candidate.js";
 import { electionFactoryContract, getElectionContract, provider, wallet } from "../utils/blockchain.js";
 import { ethers } from "ethers";
 
@@ -191,7 +192,18 @@ export const getAllElections = async (req, res) => {
 		// try DB first
 		const elections = await Election.find().sort({ createdAt: -1 }).lean();
 		if (elections && elections.length > 0) {
-			return res.json({ source: "db", count: elections.length, elections });
+			// enrich with candidate counts (best-effort)
+			try {
+				const enriched = await Promise.all(elections.map(async (e) => {
+					const totalCandidates = await Candidate.countDocuments({ electionId: e.electionId }).catch(() => 0);
+					return { ...e, totalCandidates: Number(totalCandidates) || 0 };
+				}));
+				return res.json({ source: "db", count: enriched.length, elections: enriched });
+			} catch (enrichErr) {
+				// fallback to raw elections if counting fails
+				console.warn("Failed to compute candidate counts:", enrichErr);
+				return res.json({ source: "db", count: elections.length, elections });
+			}
 		}
 
 		// fallback to on-chain
@@ -339,13 +351,54 @@ export const startVoting = async (req, res) => {
 		const { id } = req.params;
 		if (!id) return res.status(400).json({ message: "election id required" });
 
+		// pre-check on-chain electionInfo to avoid calling tx that will revert
+		const contractRead = await loadElectionContractForId(id);
+		let info;
+		try {
+			info = await contractRead.getElectionInfo();
+		} catch (e) {
+			// if read fails, log and continue to attempt tx (tx will provide revert reason)
+			console.warn("Failed to read on-chain electionInfo:", e?.message || e);
+			info = null;
+		}
+
+		if (info) {
+			// extract useful fields
+			const rawStatus = info?.status ?? info[5];
+			const statusNum = (rawStatus && typeof rawStatus.toNumber === "function") ? rawStatus.toNumber() : (rawStatus != null ? Number(rawStatus) : null);
+			const startTimeBN = info?.startTime ?? info[2];
+			const startTime = startTimeBN && typeof startTimeBN.toNumber === "function" ? startTimeBN.toNumber() : (startTimeBN ? Number(startTimeBN) : null);
+			const totalCandidatesBN = info?.totalCandidates ?? info?.totalCandidates ?? null;
+			const totalCandidates = (totalCandidatesBN && typeof totalCandidatesBN.toNumber === "function") ? totalCandidatesBN.toNumber() : (totalCandidatesBN != null ? Number(totalCandidatesBN) : null);
+			const now = Math.floor(Date.now() / 1000);
+
+			// require status === Registration (1)
+			if (statusNum == null || Number(statusNum) !== 1) {
+				return res.status(400).json({ message: "Invalid election status: must be in Registration to start voting" });
+			}
+
+			// require current time >= startTime
+			if (startTime != null && now < startTime) {
+				return res.status(400).json({ message: "Voting time not reached" });
+			}
+
+			// require at least one approved candidate
+			if (totalCandidates != null && Number(totalCandidates) === 0) {
+				return res.status(400).json({ message: "No approved candidates" });
+			}
+		}
+
+		// safe to send tx
 		const contract = await loadElectionContractForId(id);
 		const tx = await contract.startVoting();
 		const receipt = await tx.wait();
 		return res.json({ message: "Voting started", txHash: tx.hash, blockNumber: receipt.blockNumber });
 	} catch (err) {
 		console.error("startVoting error:", err);
-		return res.status(500).json({ message: err?.reason || err.message || "Server error" });
+		// try to parse revert/estimate reasons and return friendly 400
+		const parsed = extractEthersRevert(err);
+		if (parsed) return res.status(400).json({ message: parsed });
+		return res.status(500).json({ message: err?.reason || err?.message || "Server error" });
 	}
 };
 
@@ -355,13 +408,43 @@ export const endElection = async (req, res) => {
 		const { id } = req.params;
 		if (!id) return res.status(400).json({ message: "election id required" });
 
+		// pre-check on-chain status and endTime
+		const contractRead = await loadElectionContractForId(id);
+		let info;
+		try {
+			info = await contractRead.getElectionInfo();
+		} catch (e) {
+			console.warn("Failed to read on-chain electionInfo:", e?.message || e);
+			info = null;
+		}
+
+		if (info) {
+			const rawStatus = info?.status ?? info[5];
+			const statusNum = (rawStatus && typeof rawStatus.toNumber === "function") ? rawStatus.toNumber() : (rawStatus != null ? Number(rawStatus) : null);
+			const endTimeBN = info?.endTime ?? info[3];
+			const endTime = endTimeBN && typeof endTimeBN.toNumber === "function" ? endTimeBN.toNumber() : (endTimeBN ? Number(endTimeBN) : null);
+			const now = Math.floor(Date.now() / 1000);
+
+			// require status === Voting
+			if (statusNum == null || Number(statusNum) !== 2) {
+				return res.status(400).json({ message: "Invalid election status: must be in Voting to end the election" });
+			}
+
+			// require endTime reached
+			if (endTime != null && now < endTime) {
+				return res.status(400).json({ message: "Election end time not reached" });
+			}
+		}
+
 		const contract = await loadElectionContractForId(id);
 		const tx = await contract.endElection();
 		const receipt = await tx.wait();
 		return res.json({ message: "Election ended", txHash: tx.hash, blockNumber: receipt.blockNumber });
 	} catch (err) {
 		console.error("endElection error:", err);
-		return res.status(500).json({ message: err?.reason || err.message || "Server error" });
+		const parsed = extractEthersRevert(err);
+		if (parsed) return res.status(400).json({ message: parsed });
+		return res.status(500).json({ message: err?.reason || err?.message || "Server error" });
 	}
 };
 
@@ -371,20 +454,59 @@ export const declareResult = async (req, res) => {
 		const { id } = req.params;
 		if (!id) return res.status(400).json({ message: "election id required" });
 
-		const contract = await loadElectionContractForId(id);
+		// pre-check on-chain status
+		const contractRead = await loadElectionContractForId(id);
+		let info;
+		try {
+			info = await contractRead.getElectionInfo();
+		} catch (e) {
+			console.warn("Failed to read on-chain electionInfo:", e?.message || e);
+			info = null;
+		}
+
+		if (info) {
+			const rawStatus = info?.status ?? info[5];
+			const statusNum = (rawStatus && typeof rawStatus.toNumber === "function") ? rawStatus.toNumber() : (rawStatus != null ? Number(rawStatus) : null);
+
+			// require status === Ended
+			if (statusNum == null || Number(statusNum) !== 3) {
+				return res.status(400).json({ message: "Invalid election status: must be Ended to declare results" });
+			}
+		}
+
+		const contract = await loadElectionContractForId(id, wallet);
 		const tx = await contract.declareResult();
 		const receipt = await tx.wait();
-		// try to read winner after tx (view)
-		let winner;
+
+		// attempt to read winner
+		let winner = null;
 		try {
-			winner = await contract.getWinner();
+			const winnerIdBN = await contract.getWinner();
+			const winnerId = winnerIdBN.toString();
+			if (winnerId !== "0") {
+				const cand = await contract.getCandidateDetails(winnerIdBN);
+				winner = {
+					candidateId: cand.id?.toString ? cand.id.toString() : cand.id,
+					name: cand.name,
+					party: cand.party,
+					voteCount: cand.voteCount?.toString ? cand.voteCount.toString() : cand.voteCount
+				};
+			}
 		} catch (e) {
-			winner = null;
+			// ignore
 		}
-		return res.json({ message: "Result declared", txHash: tx.hash, blockNumber: receipt.blockNumber, winner });
+
+		return res.json({
+			message: "Result declared on-chain",
+			txHash: tx.hash,
+			blockNumber: receipt.blockNumber,
+			winner
+		});
 	} catch (err) {
 		console.error("declareResult error:", err);
-		return res.status(500).json({ message: err?.reason || err.message || "Server error" });
+		const parsed = extractEthersRevert(err);
+		if (parsed) return res.status(400).json({ message: parsed });
+		return res.status(500).json({ message: err?.reason || err?.message || "Server error" });
 	}
 };
 
@@ -744,4 +866,28 @@ export const getCompletedElections = async (req, res) => {
 		console.error("getCompletedElections error:", err);
 		return res.status(500).json({ message: "Server error" });
 	}
+};
+
+// helper to extract revert reason from ethers errors
+const extractEthersRevert = (err) => {
+	try {
+		if (!err) return null;
+		// Infura / provider nested body
+		if (err?.error?.body) {
+			const body = JSON.parse(err.error.body);
+			const rpcErr = body?.error;
+			if (rpcErr?.message) return rpcErr.message;
+		}
+		if (err?.error?.message) return err.error.message;
+		if (err?.reason) return err.reason;
+		if (err?.message) {
+			// try to capture "execution reverted: ..." pattern
+			const m = String(err.message).match(/execution reverted: (.*)/i);
+			if (m && m[1]) return m[1].trim();
+			return err.message;
+		}
+	} catch (e) {
+		/* ignore */
+	}
+	return null;
 };

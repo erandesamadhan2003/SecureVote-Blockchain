@@ -36,7 +36,7 @@ export default function AllElections() {
 			<div className=" items-center justify-between">
 				<h1 className="text-2xl font-semibold">All Elections</h1>
 				{isManager && (
-					<Button variant="primary" size="medium" onClick={() => (window.location.href = "/create")}>
+					<Button variant="primary" size="medium" onClick={() => (window.location.href = "/elections/create")}>
 						Create Election
 					</Button>
 				)}
@@ -44,7 +44,7 @@ export default function AllElections() {
 
 			<div className="">
 				<div className="mb-12">
-					<ElectionFilters initialFilters={filters} onFilterChange={onFilterChange} />
+					{/* <ElectionFilters initialFilters={filters} onFilterChange={onFilterChange} /> */}
 				</div>
 
 				<div className="">

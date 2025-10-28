@@ -21,7 +21,9 @@ export default function VoteConfirmation({ isOpen, candidate, onConfirm, onCance
         try {
             await onConfirm(candidate, (val) => setSubmitting(val));
         } catch (err) {
-            setError(err?.message || "Transaction failed");
+            // show clear error from the thrown Error (voteService will throw user-friendly messages)
+            const msg = err?.message || "Transaction failed";
+            setError(msg);
             setSubmitting(false);
             return;
         }

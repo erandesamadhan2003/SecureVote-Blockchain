@@ -18,7 +18,7 @@ export const getAllElections = async (filters = {}) => {
     // filters: { status, search, page, limit }
     try {
         const res = await api.get(`/elections${buildQuery(filters)}`);
-        return res;
+        return res?.data ?? res;
     } catch (err) {
         throw err;
     }
@@ -97,7 +97,7 @@ export const getMyElections = async () => {
 export const getActiveElections = async () => {
     try {
         const res = await api.get("/elections/active");
-        return res;
+        return res?.data ?? res;
     } catch (err) {
         throw err;
     }
@@ -106,7 +106,7 @@ export const getActiveElections = async () => {
 export const getUpcomingElections = async () => {
     try {
         const res = await api.get("/elections/upcoming");
-        return res;
+        return res?.data ?? res;
     } catch (err) {
         throw err;
     }
@@ -115,7 +115,7 @@ export const getUpcomingElections = async () => {
 export const getOngoingElections = async () => {
     try {
         const res = await api.get("/elections/ongoing");
-        return res;
+        return res?.data ?? res;
     } catch (err) {
         throw err;
     }
@@ -124,7 +124,7 @@ export const getOngoingElections = async () => {
 export const getCompletedElections = async () => {
     try {
         const res = await api.get("/elections/completed");
-        return res;
+        return res?.data ?? res;
     } catch (err) {
         throw err;
     }

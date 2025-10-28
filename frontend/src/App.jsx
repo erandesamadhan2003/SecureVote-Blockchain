@@ -25,6 +25,7 @@ import SystemSettings from "./pages/admin/SystemSettings.jsx";
 // Helpers / components
 import Navbar from "./components/layout/Navbar.jsx";
 import ProtectedRoute from "./components/auth/ProtectedRoute.jsx";
+import RegisterVoters from "./pages/voting/RegisterVoters.jsx";
 
 // Lightweight ErrorBoundary and ToastContainer to avoid extra dependencies
 class ErrorBoundary extends React.Component {
@@ -76,10 +77,6 @@ const NotFoundPage = () => (
 	</div>
 );
 
-const RegisterVoters = () => (
-	<div className="p-6 text-center text-gray-600">Register Voters page (placeholder)</div>
-);
-
 const VotingHistory = () => (
 	<div className="p-6 text-center text-gray-600">Voting History (placeholder)</div>
 );
@@ -121,14 +118,14 @@ export default function App() {
 							<Route element={<ProtectedRoute requiredRole="ELECTION_MANAGER" />}>
 								<Route path="/elections/create" element={<CreateElection />} />
 								<Route path="/candidates/manage" element={<ManageCandidates />} />
-								<Route path="/voters/register" element={<RegisterVoters />} />
+								<Route path="/voters/register/:electionId" element={<RegisterVoters />} />
 								<Route path="/analytics/:electionId" element={<Analytics />} />
 							</Route>
 
 							{/* Authority */}
 							<Route element={<ProtectedRoute requiredRole="ELECTION_AUTHORITY" />}>
 								<Route path="/candidates/manage" element={<ManageCandidates />} />
-								<Route path="/voters/register" element={<RegisterVoters />} />
+								<Route path="/voters/register/:electionId" element={<RegisterVoters />} />
 							</Route>
 
 							{/* Super Admin */}
